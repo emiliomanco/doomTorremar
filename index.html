@@ -285,7 +285,8 @@ function buildFloorTextures() {
 /* buffer de baja resolucion donde se pintan suelo y techo */
 const fbuf = { cnv: null, ictx: null, img: null, data: null, w: 0, h: 0 };
 function buildFloorBuffer() {
-  const div = 2 * view.dpr;
+  /* el divisor crece en pantallas muy grandes para mantener el coste plano */
+  const div = Math.max(2 * view.dpr, Math.sqrt(view.w * view.v3 / 350000));
   const w = Math.max(1, Math.ceil(view.w / div));
   const h = Math.max(1, Math.ceil(view.v3 / div));
   fbuf.cnv = makeCanvas(w, h);
@@ -296,7 +297,7 @@ function buildFloorBuffer() {
 }
 function renderFloorCeiling(horizon) {
   const W = view.w, H = view.v3;
-  if (!fbuf.cnv || fbuf.w !== Math.ceil(W / (2 * view.dpr))) buildFloorBuffer();
+  if (!fbuf.cnv) buildFloorBuffer();
   if (!FLOORTEX[1]) buildFloorTextures();
   const bw = fbuf.w, bh = fbuf.h, data = fbuf.data;
   const scaleY = H / bh;
@@ -341,8 +342,11 @@ const ctx = cv.getContext('2d', { alpha: false });
 const view = { w: 0, h: 0, s: 1, dpr: 1 };
 let COL_W = 2, COLS = 0, zbuf = new Float32Array(1);
 
+const MAX_BACKING = 2400;                            // tope de pixeles reales de ancho
 function resize() {
-  const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+  let dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+  if (window.innerWidth * dpr > MAX_BACKING) dpr = MAX_BACKING / window.innerWidth;
+  dpr = Math.max(1, dpr);
   cv.width  = Math.max(320, Math.floor(window.innerWidth  * dpr));
   cv.height = Math.max(240, Math.floor(window.innerHeight * dpr));
   cv.style.width  = window.innerWidth + 'px';
@@ -669,15 +673,23 @@ const BOSSES = {
            glasses:false, headRatio:0.32, emoji:'\u{1F4A2}', angry:true, shout:true, shoulders:0.74 }
   },
   J: {
-    id:'J', boss:true, name:'JORGE CORONEL', hp:2600, speed:1.5, radius:0.55,
-    scaleX:0.95, scaleY:2.25, sight:26, dmg:22, score:10000, tex:{w:150,h:300},
-    attack:'hell', cd:2.6, projSpeed:4.6, summonEvery:10, summonMax:6,
+    id:'J', boss:true, name:'JORGE CORONEL', hp:4200, speed:1.5, radius:0.55,
+    scaleX:0.95, scaleY:2.25, sight:26, dmg:19, score:10000, tex:{w:150,h:300},
+    attack:'hell', cd:2.9, projSpeed:4.6, summonEvery:10, summonMax:6,
     look:{ skin:'#d8b18e', shirt:'#1b1b22', pants:'#101015', hair:'#0d0d0d',
            glasses:false, headRatio:0.20, emoji:'\u{1F3AF}', tie:'#7d1b1b',
            old:true, angry:true, shoulders:0.62 }
   }
 };
 const ALLDEF = Object.assign({}, ENEMIES, BOSSES);
+
+/* ------------------------------ DIFICULTAD --------------------------- */
+const DIFFS = [
+  { name:'APRENDIZ',  dmg:0.55, armor:75, ammo:90, desc:'los profesores pegan flojo' },
+  { name:'NORMAL',    dmg:1.00, armor:25, ammo:60, desc:'un curso corriente' },
+  { name:'EXPULSION', dmg:1.60, armor:0,  ammo:45, desc:'sin armadura y sin piedad' }
+];
+let diff = 1;
 
 /* --------------------------- ARMAS DEL ESTUDIANTE -------------------- */
 const WEAPONS = [
@@ -952,7 +964,8 @@ function resetGame() {
   }
   buildZoneMap();
   killTotal = enemies.length;
-  P.hp = 100; P.armor = 25; P.ammo = 60; P.exams = 2;
+  const D = DIFFS[diff];
+  P.hp = 100; P.armor = D.armor; P.ammo = D.ammo; P.exams = 2;
   P.weapon = 1; P.cool = 0; P.pitch = 0; P.dead = false;
   P.kills = 0; P.score = 0; P.pain = 0; P.flash = 0; P.kick = 0; P.shake = 0;
   P.switching = 0; P.nextW = -1; P.zone = 0; P.beat = 0;
@@ -977,6 +990,7 @@ function hurtPlayer(amount, sx, sy) {
     hurtMarks.push({ ang: Math.atan2(sy - P.y, sx - P.x), t: 1.2 });
     if (hurtMarks.length > 6) hurtMarks.shift();
   }
+  amount *= DIFFS[diff].dmg;
   if (P.armor > 0) {
     const abs = Math.min(P.armor, amount * 0.5);
     P.armor -= abs; amount -= abs;
@@ -1035,7 +1049,10 @@ window.addEventListener('keydown', (ev) => {
   const k = ev.key.toLowerCase();
   keys[k] = true;
   if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' ','tab'].includes(k)) ev.preventDefault();
-  if (k >= '1' && k <= '4') selectWeapon(parseInt(k, 10) - 1);
+  if (state === 'menu' && k >= '1' && k <= '3') {
+    diff = parseInt(k, 10) - 1;                    /* la dificultad solo se elige en el menu */
+    resetGame();
+  } else if (k >= '1' && k <= '4') selectWeapon(parseInt(k, 10) - 1);
   if (k === 'tab') showMap = !showMap;
   if (k === 'm') { Snd.on = !Snd.on; addMsg(Snd.on ? 'SONIDO ON' : 'SONIDO OFF', '#9fd0ff'); }
   if (k === '[' || k === ']') {
@@ -1355,6 +1372,7 @@ function updateEnemies(dt) {
               if (!s) continue;
               const m = spawnEnemy(ENEMIES.E, s.x, s.y);
               m.summoned = true; m.state = 'chase'; m.activated = true;
+              killTotal++;                              /* el marcador crece con los refuerzos */
               spawnFX('summon', s.x, s.y, 1.1, 0.6); n++;
             }
             if (n) { addMsg('\u{1F4E2} JORGE LLAMA A LOS DE ED. FISICA', '#ff9f5c'); Snd.roar(); }
@@ -1726,21 +1744,35 @@ function renderSprites() {
     if (s.anchor === 'floor') top = horizon + unit * 0.5 - sh - unit * (s.lift || 0);
     else top = horizon - sh / 2 - unit * (s.lift || 0);
 
+    const c0 = Math.max(0, Math.floor(left / COL_W));
+    const c1 = Math.min(COLS - 1, Math.ceil((left + sw) / COL_W) - 1);
+    if (c1 < c0) continue;
+
+    /* si el Z-Buffer lo tapa por completo, ni siquiera se tinta */
+    let anyVisible = false;
+    for (let col = c0; col <= c1; col++) {
+      if (zbuf[col] >= ty) { anyVisible = true; break; }
+    }
+    if (!anyVisible) continue;
+
     const fog = clamp((ty * lightK - 3) / 22, 0, 0.72);
     const tex = tinted(s.tex, fog, s.flash || 0);
     const tw = s.tex.width, th = s.tex.height;
-
     if (s.alpha !== undefined) ctx.globalAlpha = clamp(s.alpha, 0, 1);
-    const c0 = Math.max(0, Math.floor(left / COL_W));
-    const c1 = Math.min(COLS - 1, Math.ceil((left + sw) / COL_W));
-    for (let col = c0; col <= c1; col++) {
-      if (zbuf[col] < ty) continue;                     /* <-- oclusion Z-BUFFER */
-      const px = col * COL_W;
-      let u0 = (px - left) / sw, u1 = (px + COL_W - left) / sw;
+
+    /* las columnas visibles contiguas se pintan de una sola pasada */
+    let run = -1;
+    for (let col = c0; col <= c1 + 1; col++) {
+      const vis = col <= c1 && zbuf[col] >= ty;         /* <-- oclusion Z-BUFFER */
+      if (vis) { if (run < 0) run = col; continue; }
+      if (run < 0) continue;
+      let u0 = (run * COL_W - left) / sw, u1 = (col * COL_W - left) / sw;
       u0 = clamp(u0, 0, 1); u1 = clamp(u1, 0, 1);
-      if (u1 - u0 <= 0.0001) continue;
-      ctx.drawImage(tex, u0 * tw, 0, (u1 - u0) * tw, th,
-                    left + u0 * sw, top, (u1 - u0) * sw, sh);
+      if (u1 - u0 > 0.0001) {
+        ctx.drawImage(tex, u0 * tw, 0, (u1 - u0) * tw, th,
+                      left + u0 * sw, top, (u1 - u0) * sw, sh);
+      }
+      run = -1;
     }
     ctx.globalAlpha = 1;
   }
@@ -2011,9 +2043,10 @@ function renderHUD() {
           W - 16 * s, 34 * s, (20 * s) | 0, '#9aa0a6', 'right');
   bigText('PROFESORES ' + P.kills + '/' + killTotal, W - 16 * s, 58 * s, (18 * s) | 0, '#9aa0a6', 'right');
   bigText('PUNTOS ' + P.score, W - 16 * s, 80 * s, (18 * s) | 0, '#9aa0a6', 'right');
+  bigText(DIFFS[diff].name, W - 16 * s, 100 * s, (15 * s) | 0, '#6f757d', 'right');
 
   /* claustro pendiente */
-  let by2 = 112 * s;
+  let by2 = 132 * s;
   bigText('CLAUSTRO', W - 16 * s, by2, (16 * s) | 0, '#c9b48a', 'right');
   for (const id of ['R', 'D', 'A', 'J']) {
     by2 += 21 * s;
@@ -2156,7 +2189,7 @@ function renderMenu() {
     ['SENSIBILIDAD', '[  ·  ]']
   ];
   const fs = clamp(20 * s, 13, 30);
-  const ph = Math.min(H * 0.94, (336 + lines.length * 34) * s);
+  const ph = Math.min(H * 0.94, (420 + lines.length * 34) * s);
   const pw = Math.min(W * 0.94, 900 * s);
   const px = (W - pw) / 2, py = (H - ph) / 2;
   panel(px, py, pw, ph);
@@ -2173,7 +2206,20 @@ function renderMenu() {
   bigText('OBJETIVO: EXPULSA A LOS 4 JEFES DEL CLAUSTRO', cx, y, clamp(21 * s, 12, 26) | 0, '#ff8a5c');
   y += 30 * s;
   bigText('ROBERTO · DAVID · ARTURO · JORGE CORONEL', cx, y, clamp(19 * s, 11, 24) | 0, '#9fd0ff');
-  y += 52 * s;
+  y += 40 * s;
+  bigText('DIFICULTAD  (teclas 1-3)', cx, y, clamp(19 * s, 11, 24) | 0, '#c9b48a');
+  y += 30 * s;
+  const dw = Math.min(pw * 0.29, 250 * s);
+  for (let i = 0; i < DIFFS.length; i++) {
+    const bx = cx + (i - 1) * (dw + 8 * s) - dw / 2;
+    const act = i === diff;
+    ctx.fillStyle = act ? '#8a1f1f' : 'rgba(255,255,255,0.06)';
+    roundRect(ctx, bx, y - 20 * s, dw, 28 * s, 5 * s, ctx.fillStyle);
+    bigText(DIFFS[i].name, bx + dw / 2, y, clamp(19 * s, 11, 23) | 0, act ? '#ffe45c' : '#8f8878');
+  }
+  y += 24 * s;
+  bigText(DIFFS[diff].desc, cx, y, clamp(16 * s, 10, 20) | 0, '#8f8878');
+  y += 44 * s;
   const blink = 0.55 + 0.45 * Math.sin(performance.now() / 260);
   ctx.globalAlpha = blink;
   bigText('CLIC PARA ENTRAR AL INSTITUTO', cx, y, clamp(30 * s, 16, 38) | 0, '#ffe45c');
@@ -2205,7 +2251,8 @@ function renderEnd() {
   const rows = [
     ['PROFESORES ELIMINADOS', st.kills + ' / ' + st.total],
     ['TIEMPO', Math.floor(st.time / 60) + ':' + String(Math.floor(st.time % 60)).padStart(2, '0')],
-    ['PUNTUACION', String(st.score)]
+    ['PUNTUACION', String(st.score)],
+    ['DIFICULTAD', DIFFS[diff].name]
   ];
   for (const [k, v] of rows) {
     bigText(k, cx - 24 * s, y, (24 * s) | 0, '#c9b48a', 'right');
