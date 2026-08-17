@@ -502,6 +502,7 @@ const Snd = {
   pin(){ this.tone(1400,0.05,'square',0.05,900); },
   boom(){ this.noise(0.9,0.34,900,3); this.tone(65,0.65,'sine',0.16,24); },
   hit(){ this.tone(760,0.05,'square',0.045,380); },
+  gib(){ this.noise(0.26,0.20,520,0.9); this.tone(90,0.22,'sawtooth',0.10,38); },
   head(){ this.tone(1180,0.06,'square',0.06,1720); this.noise(0.10,0.09,2400,1.4);
           setTimeout(()=>this.tone(1560,0.05,'triangle',0.05,2100),40); },
   slide(){ this.noise(0.34,0.09,700,0.9); this.tone(150,0.26,'sine',0.05,80); },
@@ -799,6 +800,18 @@ function genRoom(roomNo, seed) {
     push(MAP.spawn.x|0, MAP.spawn.y|0);
     for (let h=0; h<q.length; h++) { const i=q[h], px=i%W, py=(i/W)|0;
       push(px+1,py); push(px-1,py); push(px,py+1); push(px,py-1); }
+  }
+  /* lamparas de techo: una rejilla suelta que deja charcos de luz en el suelo */
+  MAP.lamps = [];
+  {
+    const paso = boss ? 7 : 6;
+    for (let y=4;y<H-3;y+=paso) for (let x=4;x<W-3;x+=paso) {
+      const jx = x + ((R()*3)|0) - 1, jy = y + ((R()*3)|0) - 1;
+      if (jx<1||jy<1||jx>=W-1||jy>=H-1) continue;
+      if (g[jy*W+jx] || !MAP.reach[jy*W+jx]) continue;
+      if (R() < 0.18) continue;                            /* alguna fundida */
+      MAP.lamps.push({ x: jx+0.5, y: jy+0.5, rota: R() < 0.16 });
+    }
   }
   /* indices de textura estables por celda */
   MAP.wallIdx = new Uint8Array(W*H);
@@ -1270,6 +1283,20 @@ const FX = {
     g.addColorStop(0,'rgba(255,250,215,0.95)'); g.addColorStop(0.35,'rgba(255,190,90,0.6)');
     g.addColorStop(1,'rgba(255,150,50,0)');
     c.fillStyle=g; c.beginPath(); c.arc(W/2,H/2,W*0.5,0,TAU); c.fill(); }),
+  wblood: () => sprite('fx_wblood',48,48,(c,W,H)=>{
+    ellipse(c, W*0.5, H*0.46, W*0.30, H*0.26, 'rgba(112,10,14,0.82)');
+    ellipse(c, W*0.46, H*0.42, W*0.19, H*0.16, 'rgba(158,16,20,0.80)');
+    for (let i=0;i<12;i++) {                            /* gotas alrededor */
+      const a = i*0.523 + 0.2, r = W*(0.24+Math.random()*0.22);
+      ellipse(c, W*0.5+Math.cos(a)*r, H*0.46+Math.sin(a)*r*0.9,
+              W*(0.03+Math.random()*0.05), H*(0.03+Math.random()*0.05), 'rgba(126,12,16,0.7)');
+    }
+    for (let i=0;i<3;i++) {                             /* regueros hacia abajo */
+      const bx = W*(0.34+Math.random()*0.32);
+      c.fillStyle = 'rgba(104,8,12,0.65)';
+      c.fillRect(bx, H*0.5, W*0.035, H*(0.14+Math.random()*0.30));
+    }
+  }),
   hole: () => sprite('fx_hole',32,32,(c,W,H)=>{
     ellipse(c, W/2, H/2, W*0.20, H*0.20, 'rgba(10,8,10,0.9)');
     ellipse(c, W/2-W*0.03, H/2-H*0.03, W*0.11, H*0.11, 'rgba(0,0,0,0.95)');
@@ -1293,6 +1320,21 @@ const FX = {
     c.strokeStyle='rgba(200,245,255,0.9)'; c.lineWidth=4;
     roundRect(c,W*0.22,H*0.06,W*0.56,H*0.90,W*0.26); c.stroke(); })
 };
+/* fluorescente industrial: tubo, carcasa y halo. Nada religioso, solo taller. */
+const LAMP_SPR = (rota) => sprite('lamp'+(rota?'r':''), 128, 64, (c,W,H)=>{
+  const g = c.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#4a4e56'); g.addColorStop(0.45,'#2f333a'); g.addColorStop(1,'#22252a');
+  roundRect(c, W*0.06, H*0.10, W*0.88, H*0.34, 4, g);
+  c.fillStyle='#191c20';
+  c.fillRect(W*0.20, 0, W*0.05, H*0.14); c.fillRect(W*0.75, 0, W*0.05, H*0.14);
+  const t = c.createLinearGradient(0,0,W,0);
+  t.addColorStop(0,'rgba(255,238,196,0.55)'); t.addColorStop(0.5, rota?'rgba(255,244,214,0.85)':'rgba(255,250,232,1)');
+  t.addColorStop(1,'rgba(255,238,196,0.55)');
+  roundRect(c, W*0.10, H*0.40, W*0.80, H*0.20, H*0.10, t);
+  const halo = c.createRadialGradient(W*0.5,H*0.52,H*0.05,W*0.5,H*0.52,W*0.44);
+  halo.addColorStop(0,'rgba(255,236,180,0.42)'); halo.addColorStop(1,'rgba(255,214,130,0)');
+  c.fillStyle=halo; c.fillRect(0,H*0.24,W,H*0.76);
+});
 const PROP_SPR = {
   barrel: (dmgd) => sprite('pr_barrel'+(dmgd?'d':''), 96, 128, (c,W,H)=>{
     const g = c.createLinearGradient(0,0,W,0);
@@ -1428,7 +1470,11 @@ function spawnFX(kind, x, y, size, life) { G.fx.push({ kind, x, y, size:size||1,
 /* Cada fogonazo, explosion o proyectil ilumina paredes, suelo y sprites. */
 const LIGHTS = [];
 function addLight(x, y, r, i, life, warm) {
-  if (LIGHTS.length > 30) LIGHTS.shift();
+  if (LIGHTS.length > 40) {                             /* al llenarse cae la efimera mas vieja */
+    const j = LIGHTS.findIndex(l => l.life !== Infinity);
+    if (j < 0) return;                                  /* solo quedan lamparas fijas: no se pisan */
+    LIGHTS.splice(j, 1);
+  }
   LIGHTS.push({ x, y, r, i, t:0, life:life||0.1, warm:(warm===undefined?1:warm) });
 }
 function updateLights(dt) {
@@ -1450,11 +1496,49 @@ function prepLights(px, py) {
     l.k = l.i * (l.life === Infinity ? 1 : (1 - l.t/l.life));
     if (l.k <= 0.02) continue;
     l.rr = l.r*l.r; l.ir = 1/l.r;
+    l.w = l.k / (1 + Math.sqrt(dx*dx+dy*dy)*0.10);      /* cercania + intensidad */
     LA.push(l);
   }
-  if (LA.length > 12) { LA.sort((a,b)=>b.k-a.k); LA.length = 12; }
+  if (LA.length > 12) { LA.sort((a,b)=>b.w-a.w); LA.length = 12; }
+  buildLightGrid();
+}
+/* Rejilla de luz precalculada: el suelo se pinta pixel a pixel, asi que
+   evaluar cada foco por pixel sale carisimo. Se resuelve una vez por frame
+   sobre celdas de 1/3 de unidad y luego el suelo solo hace una lectura. */
+const LG = 3;
+let LGRID = null, LGWARM = null, LGW = 0, LGH = 0;
+function buildLightGrid() {
+  const w = MAP.w*LG, h = MAP.h*LG;
+  if (!LGRID || LGW !== w || LGH !== h) {
+    LGW = w; LGH = h; LGRID = new Float32Array(w*h); LGWARM = new Float32Array(w*h);
+  }
+  LGRID.fill(0);
+  if (!LA.length) return;
+  LGWARM.fill(0);
+  for (let n=0;n<LA.length;n++) {
+    const l = LA[n];
+    const x0 = Math.max(0, ((l.x-l.r)*LG)|0), x1 = Math.min(w-1, ((l.x+l.r)*LG)|0);
+    const y0 = Math.max(0, ((l.y-l.r)*LG)|0), y1 = Math.min(h-1, ((l.y+l.r)*LG)|0);
+    for (let gy=y0; gy<=y1; gy++) {
+      const wy = (gy+0.5)/LG - l.y, row = gy*w;
+      for (let gx=x0; gx<=x1; gx++) {
+        const wx = (gx+0.5)/LG - l.x, d2 = wx*wx+wy*wy;
+        if (d2 >= l.rr) continue;
+        const k = 1 - Math.sqrt(d2)*l.ir, c = k*k*l.k;
+        LGRID[row+gx] += c; LGWARM[row+gx] += c*l.warm;
+      }
+    }
+  }
 }
 let lightWarm = 1;                                      /* 1 = calida, 0 = fria (portal) */
+/* lectura rapida en la rejilla: una division entera y dos accesos */
+function gridLight(x, y) {
+  const gx = (x*LG)|0, gy = (y*LG)|0;
+  if (gx < 0 || gy < 0 || gx >= LGW || gy >= LGH) { lightWarm = 1; return 0; }
+  const i = gy*LGW + gx, v = LGRID[i];
+  lightWarm = v > 0 ? LGWARM[i]/v : 1;
+  return v > 1.7 ? 1.7 : v;
+}
 function lightAt(x, y) {                                /* aporte de luz 0..1.7 en un punto */
   const n = LA.length; if (!n) return 0;
   let s = 0, w = 0;
@@ -1473,9 +1557,25 @@ function dmgNumber(x, y, val, crit, head) {            /* cifra flotante sobre e
   G.dmgNums.push({ x, y, z: 0.9 + rnd(-0.1,0.15), val: Math.max(1, Math.round(val)),
                    crit: !!crit, head: !!head, t: 0, life: 0.85, dx: rnd(-0.25,0.25) });
 }
-function addHole(x, y, z) {                             /* impacto en la pared */
-  if (G.holes.length > 44) G.holes.shift();
-  G.holes.push({ x, y, z, t: 0, life: 26 });
+function addHole(x, y, z, kind, size) {                  /* impacto o salpicadura en la pared */
+  if (G.holes.length > 54) G.holes.shift();
+  G.holes.push({ x, y, z, t: 0, life: kind === 'blood' ? 40 : 26,
+                 kind: kind || 'bala', size: size || 0.14, rot: rnd(0,TAU) });
+}
+/* busca la pared mas cercana en 8 direcciones y le pega una salpicadura */
+function bloodOnWall(x, y, big) {
+  let mejor = null, md = 1.45;
+  for (let i=0;i<8;i++) {
+    const a = i*TAU/8, dx = Math.cos(a), dy = Math.sin(a);
+    const d = rayWall(x, y, dx, dy, md);
+    if (d < md) { md = d; mejor = { x: x+dx*(d-0.04), y: y+dy*(d-0.04) }; }
+  }
+  if (!mejor) return;
+  const n = big ? 3 : 2;
+  for (let i=0;i<n;i++)
+    addHole(mejor.x + rnd(-0.10,0.10), mejor.y + rnd(-0.10,0.10),
+            clamp(0.30 + rnd(0,0.85), 0.12, 1.5),
+            'blood', (big ? 0.42 : 0.26) * rnd(0.7,1.35));
 }
 function addDecal(x, y, r, kind) {                      /* mancha plana en el suelo */
   if (G.decals.length > 54) G.decals.shift();
@@ -1560,7 +1660,7 @@ class Enemy {
     this.phase2 = false; this.blink = 0;
     this.dashT = def.dashEvery||def.chargeEvery||def.leapEvery||0; this.dashing = 0;
     this.summonedOnce = false; this.minionDeathT = -999; this.minions = [];
-    this.burst = 0; this.burstT = 0; this.aiming = 0; this.stagger = 0;
+    this.burst = 0; this.burstT = 0; this.aiming = 0; this.stagger = 0; this.gib = false;
     this.tele = 0; this.teleKind = null; this.owner = ownerBoss||null;
     this.knock = 0; this.knockX = 0; this.knockY = 0;
   }
@@ -1570,6 +1670,8 @@ class Enemy {
     /* un impacto fuerte interrumpe: los rasos se tambalean, los jefes no */
     if (!this.boss && amount > this.maxhp*0.20) this.stagger = this.mini ? 0.18 : 0.34;
     this.hp -= amount; this.flash = 0.16;
+    /* un golpe muy por encima de lo que le quedaba lo revienta */
+    if (!this.boss && this.hp <= -this.maxhp*0.22) this.gib = true;
     spawnParts('blood', this.x, this.y, 0.55, this.boss?9:5, 1.6, 2.2, 0.8);
     Snd.at(this.x,this.y).hit();
     if (this.boss && !this.phase2 && this.hp <= this.maxhp*0.5) {
@@ -1588,10 +1690,13 @@ class Enemy {
       killFeed((this.elite?'★ ':'') + this.def.name + (G.combo>2 ? '   x'+G.combo : ''),
                this.boss||this.mini ? '#ff8a5c' : (this.elite ? '#ffd45e' : '#c9c3b2'));
     }
-    spawnParts('blood', this.x, this.y, 0.6, this.boss?24:12, 2.4, 3.0, 1.1);
-    const nd = this.boss ? 4 : (this.mini ? 3 : 1);
+    const rev = !!this.gib;
+    spawnParts('blood', this.x, this.y, 0.6, this.boss?24:(rev?30:12), rev?3.6:2.4, rev?4.2:3.0, 1.1);
+    const nd = this.boss ? 4 : (this.mini ? 3 : (rev ? 3 : 1));
     for (let i=0;i<nd;i++) addDecal(this.x+rnd(-0.5,0.5), this.y+rnd(-0.5,0.5),
-      (this.boss?1.5:this.mini?1.0:0.55)*rnd(0.8,1.3), 'blood');
+      (this.boss?1.5:this.mini?1.0:(rev?0.85:0.55))*rnd(0.8,1.3), 'blood');
+    bloodOnWall(this.x, this.y, rev || this.boss || this.mini);
+    if (rev) { Snd.at(this.x,this.y).gib(); G.hitStop = Math.max(G.hitStop||0, 0.07); }
     Snd.at(this.x,this.y).die();
     if (this.owner) {
       const b = this.owner;
@@ -2431,6 +2536,13 @@ function startRoom(n, seed) {
   G.parts.length = 0; G.fx.length = 0; G.motes.length = 0; G.props.length = 0;
   G.dmgNums.length = 0; G.feed.length = 0; G.combo = 0; G.decals.length = 0; G.holes.length = 0;
   LIGHTS.length = 0; LA.length = 0;
+  /* en un apagon los fluorescentes se caen: solo aguantan unos parpadeando */
+  const apagon = G.mod && G.mod.id === 'blackout';
+  if (MAP.lamps) for (const lp of MAP.lamps) {
+    if (apagon) { lp.rota = true; if ((lp.x*7 + lp.y*13 | 0) % 3) continue; }
+    addLight(lp.x, lp.y, lp.rota ? 4.6 : 7.4, lp.rota ? 0.30 : 0.52, Infinity, 1);
+  }
+  MAP.lampsOn = !apagon;
   G.roomState = 'fight'; G.portalOn = false; G.exitT = 0; G.modBanner = 0;
   const total = Math.max(1, G.players.size);
   for (const p of G.players.values()) {
@@ -2806,14 +2918,14 @@ function renderFloorCeiling(horizon) {
     let fx = p.x+rowD*rdx0, fy = p.y+rowD*rdy0;
     const stepX = rowD*dxs, stepY = rowD*dys;
     let lastI = -1, tex = null, lvlN = lvl;
-    const lightsOn = LA.length > 0 && rowD < 22;
-    const lstep = rowD < 9 ? 3 : 7;                     /* mas fino de cerca */
+    const lightsOn = LA.length > 0 && rowD < 24;
+    const lstep = rowD < 11 ? 3 : 7;                    /* mas fino de cerca */
     const drow = DITH[by & 3];
     for (let bx=0;bx<bw;bx++, fx+=stepX, fy+=stepY) {
       const cx = fx|0, cy = fy|0;
       if (cx<0||cy<0||cx>=MAP.w||cy>=MAP.h) { data[off+bx] = FOGPIX; continue; }
-      if (lightsOn && (bx & lstep) === 0) {             /* la luz se muestrea a tramos y se difumina */
-        const l = lightAt(fx, fy);
+      if (lightsOn && (bx & lstep) === 0) {             /* lectura directa en la rejilla + difuminado */
+        const l = LGRID[((fy*LG)|0)*LGW + ((fx*LG)|0)];
         const nl = l > 0.04 ? Math.max(0, lvl - ((l*4.6 + drow[(bx>>2) & 3])|0)) : lvl;
         if (nl !== lvlN) { lvlN = nl; lastI = -1; }
       }
@@ -2864,22 +2976,36 @@ function renderWorld() {
     let fa = Math.sqrt(perp*lightK*fogMul/27);
     if (side) fa += 0.17;
     let lit = 0;
-    if (LA.length) lit = lightAt(p.x+rdx*perp, p.y+rdy*perp);
+    if (LA.length) lit = gridLight(p.x+rdx*perp, p.y+rdy*perp);
     if (lit > 0.02) { fa -= lit*0.46; litL[col] = lit; litW[col] = lightWarm; litY0[col] = y0; litY1[col] = y1; }
     const fi = clamp((fa*64)|0, 0, 64);
     if (fi > 0) { ctx.fillStyle = FOGA[fi]; ctx.fillRect(sx, y0, COL_W, y1-y0); }
   }
-  if (LA.length) {                                     /* segunda pasada: halo calido */
+  if (LA.length) {
+    /* Segunda pasada: halo de luz. Las columnas contiguas con el mismo tono y
+       la misma franja vertical se pintan de una sola vez; si no, seria un
+       fillRect por columna y el coste se dispara. */
     ctx.globalCompositeOperation = 'lighter';
-    for (let col=0; col<COLS; col++) {
-      const l = litL[col];
-      if (l <= 0) continue;
-      litL[col] = 0;
-      const wm = litW[col];
-      const R = (140 + 115*wm)|0, Gc = (196 - 14*wm)|0, B = (255 - 151*wm)|0;
-      ctx.fillStyle = 'rgba(' + R + ',' + Gc + ',' + B + ',' + Math.min(0.40, l*0.30).toFixed(3) + ')';
-      ctx.fillRect(col*COL_W, litY0[col], COL_W, litY1[col]-litY0[col]);
+    let r0 = -1, ra = 0, rw = 0, ry0 = 0, ry1 = 0;
+    const suelta = () => {
+      if (r0 < 0) return;
+      const R = (140 + 115*rw/7)|0, Gc = (196 - 14*rw/7)|0, B = (255 - 151*rw/7)|0;
+      ctx.fillStyle = 'rgba(' + R + ',' + Gc + ',' + B + ',' + (ra*0.05).toFixed(3) + ')';
+      ctx.fillRect(r0*COL_W, ry0, (curCol-r0)*COL_W, ry1-ry0);
+      r0 = -1;
+    };
+    let curCol = 0;
+    for (curCol=0; curCol<COLS; curCol++) {
+      const l = litL[curCol];
+      if (l <= 0) { suelta(); continue; }
+      litL[curCol] = 0;
+      const a = Math.min(8, Math.round(l*6)), w = Math.round(litW[curCol]*7);
+      const y0 = litY0[curCol], y1 = litY1[curCol];
+      if (r0 >= 0 && a === ra && w === rw && Math.abs(y0-ry0) < 3 && Math.abs(y1-ry1) < 3) continue;
+      suelta();
+      r0 = curCol; ra = a; rw = w; ry0 = y0; ry1 = y1;
     }
+    suelta();
     ctx.globalCompositeOperation = 'source-over';
   }
   ctx.imageSmoothingEnabled = true;
@@ -2946,7 +3072,8 @@ function collectSprites() {
     } else {
       const k = clamp(e.deadT/0.32, 0, 1);
       if (k<1) { tex = spriteOf(e.def,'attack',0); sx = lerp(e.scaleX, e.scaleX*1.28, k); sy = lerp(e.scaleY, e.scaleY*0.32, k*k); }
-      else { tex = spriteOf(e.def,'dead',0); sx = e.scaleX*1.3; sy = e.scaleY*0.30; }
+      else { tex = spriteOf(e.def,'dead',0);
+             sx = e.scaleX*(e.gib?1.6:1.3); sy = e.scaleY*(e.gib?0.20:0.30); }
       if (e.deadT > 7) alpha = clamp(1-(e.deadT-7), 0, 1);
     }
     if (e.alive && (e.tele > 0 || e.aiming > 0)) {      /* aviso de ataque */
@@ -2991,9 +3118,20 @@ function collectSprites() {
     addLight(MAP.exit.x, MAP.exit.y, 6.2, 0.34 + 0.10*Math.sin(G.time*3), 0.05, 0);
   if (G.portalOn) list.push({ x:MAP.exit.x, y:MAP.exit.y, tex:FX.portal(), sx:1.1, sy:1.5,
                               anchor:'floor', lift:0, flash:0, alpha:0.85, raw:true, tag:'SALIDA' });
+  const vista = me();
+  if (MAP.lamps && vista) for (const lp of MAP.lamps) {  /* lamparas colgadas del techo */
+    if (dist2(lp.x, lp.y, vista.x, vista.y) > 380) continue;
+    if (!MAP.lampsOn && (lp.x*7 + lp.y*13 | 0) % 3) continue;
+    list.push({ x:lp.x, y:lp.y, tex:LAMP_SPR(lp.rota), sx:0.62, sy:0.30, anchor:'center',
+                lift: MAP.height - 0.72, flash:0, raw:true,
+                alpha: lp.rota ? (0.55 + 0.4*Math.abs(Math.sin(G.time*7 + lp.x))) : 1 });
+  }
   for (const h of G.holes) {
-    list.push({ x:h.x, y:h.y, tex:FX.hole(), sx:0.14, sy:0.14, anchor:'center', lift:h.z-0.5,
-                flash:0, alpha: clamp(1 - h.t/h.life, 0, 1)*0.9, raw:true });
+    const sangre = h.kind === 'blood';
+    const k = clamp(1 - h.t/h.life, 0, 1);
+    list.push({ x:h.x, y:h.y, tex: sangre ? FX.wblood() : FX.hole(),
+                sx:h.size||0.14, sy:h.size||0.14, anchor:'center', lift:h.z-0.5,
+                flash:0, alpha: (sangre ? Math.min(1, k*1.6)*0.85 : k*0.9), raw:true });
   }
   for (const p of G.parts) {
     const k = clamp(p.life/p.max, 0, 1);
@@ -3039,7 +3177,7 @@ function renderSprites() {
     if (!vis) continue;
     if (s.ent) { s.ent._sy0 = top; s.ent._sh = sh; s.ent._sf = G.frames; }  /* banda para el disparo a la cabeza */
     let fog = clamp((ty*lightK*fogMul-3)/22, 0, 0.72);
-    if (LA.length && !s.raw) fog = clamp(fog - lightAt(s.x, s.y)*0.42, 0, 0.72);
+    if (LA.length && !s.raw) fog = clamp(fog - gridLight(s.x, s.y)*0.42, 0, 0.72);
     const tex = s.raw ? s.tex : tinted(s.tex, fog, s.flash||0);
     const tw = s.tex.width, th = s.tex.height;
     if (s.alpha !== undefined) ctx.globalAlpha = clamp(s.alpha, 0, 1);
