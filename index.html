@@ -82,7 +82,7 @@
     <div class="row"><button id="btn-solo" class="go">JUGAR EN SOLITARIO</button></div>
     <div class="muted" id="net-state">Red: comprobando…</div>
   </div>
-  <div class="muted">Supervivencia por salas · 50 salas · cooperativo hasta 4 jugadores</div>
+  <div class="muted">Supervivencia por salas · 50 salas · cooperativo hasta 8 jugadores</div>
 </div>
 
 <!-- ===================== PERSONAJE ===================== -->
@@ -233,7 +233,7 @@ const DIFFS = [
   { name:'DIFÍCIL',    hp:1.45, dmg:1.35, spd:1.12 },
   { name:'SOULS-LIKE', hp:2.10, dmg:1.85, spd:1.25 }
 ];
-const MAX_PLAYERS = 4;
+const MAX_PLAYERS = 8;
 const TOTAL_ROOMS = 50;
 const BOSS_ROOMS = { 10:'roberto', 20:'arturo', 30:'david', 50:'jorge' };
 const UPGRADE_ROOMS = [5, 15, 25, 35, 45];
@@ -1229,12 +1229,22 @@ function addMsg(text, col) {
 }
 function diffScale(isBoss) {                            /* dificultad base x nº de jugadores */
   const d = DIFFS[G.diff] || DIFFS[0];
-  const n = Math.max(1, G.nPlayers);
+  const n = clamp(G.nPlayers || 1, 1, MAX_PLAYERS);
+  const extra = n - 1;
   /* los enemigos rasos escalan con la sala; los jefes ya vienen medidos */
   const roomK = isBoss ? 1 : (1 + (G.room-1)*0.030);
-  return { hp: d.hp * (1 + (n-1)*0.55) * roomK,
-           dmg: d.dmg * (1 + (n-1)*0.14) * (1 + (G.room-1)*0.010),
-           spd: d.spd * (1 + (n-1)*0.03) };
+  /* con mas jugadores todos pegan y aguantan mas, y los jefes bastante mas */
+  const hpK  = isBoss ? (1 + extra*0.85) : (1 + extra*0.35);
+  const dmgK = isBoss ? (1 + extra*0.18) : (1 + extra*0.11);
+  const spdK = isBoss ? (1 + extra*0.035) : (1 + extra*0.022);
+  return { hp: d.hp * hpK * roomK,
+           dmg: d.dmg * dmgK * (1 + (G.room-1)*0.010),
+           spd: d.spd * spdK };
+}
+/* cuantos enemigos por sala: la base sube con cada jugador conectado */
+function roomEnemyCount() {
+  const n = clamp(G.nPlayers || 1, 1, MAX_PLAYERS);
+  return Math.min(46, rndi(10, 15) + Math.round((n-1) * 2.6));
 }
 
 /* ------------------------------ jugador ------------------------------ */
@@ -1953,7 +1963,7 @@ function spawnRoomEnemies() {
   }
   G.bossRef = null;
   const spots = freeCells(MAP.spawn, 9);
-  const n = rndi(10, 15);                                /* entre 10 y 15 enemigos por sala */
+  const n = roomEnemyCount();                            /* 10-15 en solitario, mas por cada jugador */
   const pool = ['runner','runner','shooter','shooter','brute'];
   if (G.room >= 3) pool.push('tiza','tiza');
   if (G.room >= 5) pool.push('becario','bedel');
@@ -1978,8 +1988,13 @@ function startRoom(n, seed) {
   G.projectiles.length = 0; G.items.length = 0; G.pools.length = 0;
   G.parts.length = 0; G.fx.length = 0; G.motes.length = 0;
   G.roomState = 'fight'; G.portalOn = false; G.exitT = 0;
+  const total = Math.max(1, G.players.size);
   for (const p of G.players.values()) {
-    p.x = MAP.spawn.x + (p.order-1)*0.6 - 0.9; p.y = MAP.spawn.y;
+    const a = ((p.order-1)/total) * TAU;
+    const rr = total > 1 ? 1.15 : 0;
+    let px = MAP.spawn.x + Math.cos(a)*rr, py = MAP.spawn.y + Math.sin(a)*rr*0.7;
+    if (hitsWall(px, py, 0.3)) { px = MAP.spawn.x; py = MAP.spawn.y; }
+    p.x = px; p.y = py;
     p.ang = -Math.PI/2;
     if (p.down) {                                       /* te arrastran a la sala siguiente */
       p.down = false; p.hp = Math.round((p.maxhp||100)*0.30);
@@ -2908,19 +2923,24 @@ function renderHUD() {
     bigText(String(i+1), sx2+slotW/2, top+barH-13*s, (13*s)|0, i===p.weapon?'#2a2008':'#c9b48a','center',false);
   }
   /* ---------------- HUD de equipo (esquina) ---------------- */
+  const team = [...G.players.values()].sort((a,b)=>a.order-b.order);
+  const many = team.length > 4;
+  const rowH = many ? 17*s : 22*s, rowW = many ? 168*s : 190*s, fs2 = many ? 12*s : 14*s;
   let ty = 16*s;
   ctx.textAlign = 'left';
-  bigText('EQUIPO', 16*s, ty, (16*s)|0, '#c9b48a', 'left');
+  bigText('EQUIPO ' + team.length + '/' + MAX_PLAYERS, 16*s, ty, (16*s)|0, '#c9b48a', 'left');
   ty += 8*s;
-  for (const pl of [...G.players.values()].sort((a,b)=>a.order-b.order)) {
-    ty += 22*s;
+  for (const pl of team) {
+    ty += rowH;
     const f = clamp(pl.hp/pl.maxhp, 0, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(16*s, ty-12*s, 190*s, 18*s);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(16*s, ty-11*s, rowW, rowH-4*s);
     ctx.fillStyle = pl.down ? '#7a1010' : (f>0.5?'#3e8e4a':f>0.25?'#8a7420':'#8a2020');
-    ctx.fillRect(16*s, ty-12*s, 190*s*f, 18*s);
-    ctx.fillStyle = pl.skin; ctx.fillRect(16*s, ty-12*s, 5*s, 18*s);
-    bigText((pl.isLocal?'▸ ':'') + pl.nick + (pl.down?' (ABATIDO)':''), 26*s, ty+2*s, (14*s)|0, pl.down?'#ff9b9b':'#f0ead8', 'left');
-    bigText(Math.max(0,Math.round(pl.hp)), 202*s, ty+2*s, (14*s)|0, '#e8e2d2', 'right');
+    ctx.fillRect(16*s, ty-11*s, rowW*f, rowH-4*s);
+    ctx.fillStyle = pl.skin; ctx.fillRect(16*s, ty-11*s, 5*s, rowH-4*s);
+    const nm = (pl.isLocal?'▸ ':'') + pl.nick + (pl.down?' (ABATIDO)':'');
+    bigText(nm.length > (many?16:20) ? nm.slice(0,(many?16:20)) : nm,
+            26*s, ty+2*s, fs2|0, pl.down?'#ff9b9b':'#f0ead8', 'left');
+    bigText(Math.max(0,Math.round(pl.hp)), rowW+12*s, ty+2*s, fs2|0, '#e8e2d2', 'right');
   }
   /* ---------------- barra de jefe ---------------- */
   const boss = G.bossRef && G.bossRef.alive ? G.bossRef : null;
@@ -2968,7 +2988,8 @@ function renderHUD() {
   }
   ctx.textAlign='right';
   bigText('BAJAS ' + G.kills, W-16*s, 30*s, (16*s)|0, '#9aa0a6', 'right');
-  bigText(DIFFS[G.diff].name + (G.ff?' · FF':''), W-16*s, 50*s, (14*s)|0, '#6f757d', 'right');
+  bigText(DIFFS[G.diff].name + (G.ff?' · FF':'') + (G.nPlayers>1?' · x'+G.nPlayers+' JUGADORES':''),
+          W-16*s, 50*s, (14*s)|0, '#6f757d', 'right');
   if (G.enemies.filter(e=>e.alive).length && G.roomState==='fight')
     bigText('ENEMIGOS ' + G.enemies.filter(e=>e.alive).length, W-16*s, 70*s, (16*s)|0, '#ff9b8a', 'right');
   /* ---------------- capas de pantalla ---------------- */
@@ -3020,7 +3041,7 @@ function renderLobby() {
   }
   $('host-controls').style.display = G.isHost ? 'flex' : 'none';
   $('lobby-hint').textContent = G.isHost
-    ? 'Hasta 4 jugadores. La dificultad sube con cada jugador conectado.'
+    ? 'Hasta 8 jugadores. Cuantos más entren, más enemigos habrá y más fuertes serán (los jefes, aún más).'
     : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':'');
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
   $('lobby-title').textContent = 'SALA DE ESPERA (' + G.players.size + '/' + MAX_PLAYERS + ')';
@@ -3378,7 +3399,8 @@ function frame(now) {
         G.netT = 1/15;
         if (p) NET.send({ t:'pstate', id:p.id, x:+p.x.toFixed(2), y:+p.y.toFixed(2), a:+p.ang.toFixed(3),
                           w:p.weapon, k:(p.walk|0)&3, d:p.down?1:0, h:Math.round(p.hp), n:p.cool>0?1:0 });
-        if (G.isHost && (G.seq++ % 2 === 0)) NET.send(worldSnapshot());
+        const every = G.players.size > 4 ? 3 : 2;         /* menos ancho de banda con lobby lleno */
+        if (G.isHost && (G.seq++ % every === 0)) NET.send(worldSnapshot());
       }
     }
   }
