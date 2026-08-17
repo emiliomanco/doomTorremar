@@ -72,16 +72,49 @@
   <h1>TORREMAR</h1>
   <div class="sub">D U C &nbsp; I N &nbsp; A L T U M</div>
   <div class="panel col" style="align-items:center">
-    <div class="row"><span class="muted">APODO</span><input id="nick" maxlength="14" placeholder="Aliro Mera"></div>
+    <div class="row"><span class="muted">APODO</span><input id="nick" maxlength="16" placeholder="Aliro Mera"></div>
     <div class="row">
       <button id="btn-host">CREAR SALA (HOST)</button>
       <button id="btn-join">UNIRSE A SALA</button>
+      <button id="btn-char">PERSONAJE</button>
       <button id="btn-keys">OPCIONES DE CONTROL</button>
     </div>
     <div class="row"><button id="btn-solo" class="go">JUGAR EN SOLITARIO</button></div>
     <div class="muted" id="net-state">Red: comprobando…</div>
   </div>
   <div class="muted">Supervivencia por salas · 50 salas · cooperativo hasta 4 jugadores</div>
+</div>
+
+<!-- ===================== PERSONAJE ===================== -->
+<div class="screen" id="scr-char">
+  <h2>PERSONAJE</h2>
+  <div class="panel col">
+    <div class="row" style="align-items:flex-start;gap:22px">
+      <div class="col" style="flex:1;min-width:280px">
+        <div class="muted">COLOR DE PIEL · solo tonos cálidos reales</div>
+        <canvas id="skin-field" width="300" height="150"
+                style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
+        <div class="row" style="justify-content:flex-start">
+          <span class="muted">HEX</span>
+          <input id="skin-hex" maxlength="7" value="#e8bd93" style="width:120px;font-family:'Courier New',monospace">
+          <div id="skin-dot" style="width:34px;height:34px;border-radius:6px;border:2px solid #fff;background:#e8bd93"></div>
+        </div>
+        <div class="row" id="skin-presets" style="justify-content:flex-start;gap:6px"></div>
+        <div class="muted" id="skin-note" style="font-size:12px"></div>
+      </div>
+      <div class="col" style="flex:1;min-width:250px;align-items:center">
+        <div class="muted">VESTIMENTA</div>
+        <div class="col" id="fit-list" style="width:100%"></div>
+        <canvas id="char-preview" width="150" height="240"
+                style="width:150px;height:240px;image-rendering:auto"></canvas>
+      </div>
+    </div>
+    <div class="row">
+      <button id="btn-char-random">ALEATORIO</button>
+      <button id="btn-char-save" class="go">GUARDAR Y VOLVER</button>
+    </div>
+    <div class="muted">Si no tocas nada, el color y la ropa se sortean al entrar como hasta ahora.</div>
+  </div>
 </div>
 
 <!-- ===================== UNIRSE ===================== -->
@@ -204,7 +237,64 @@ const MAX_PLAYERS = 4;
 const TOTAL_ROOMS = 50;
 const BOSS_ROOMS = { 10:'roberto', 20:'arturo', 30:'david', 50:'jorge' };
 const UPGRADE_ROOMS = [5, 15, 25, 35, 45];
-const SKINS = ['#f2d3b3','#e8bd93','#d8a273','#c08553','#a06a3f','#845331','#5f3a20','#422814'];
+const SKINS = ['#f7e0c8','#f2d3b3','#e8bd93','#d8a273','#c08553','#a06a3f','#845331','#6b4526','#5f3a20','#422814','#33200f','#241608'];
+const OUTFITS = [
+  { id:0, name:'CAMISA BLANCA · PANTALÓN GRIS',      shirt:'#ffffff', pants:'#595959' },
+  { id:1, name:'CAMISA GRIS · PANTALÓN AZUL MARINO', shirt:'#8f8f8f', pants:'#061036' }
+];
+/* preferencias de personaje: null = nunca tocado -> aleatorio como antes */
+const PREFS = { skin:null, fit:null };
+try {
+  const c = JSON.parse(localStorage.getItem('torremar.char') || 'null');
+  if (c) { PREFS.skin = c.skin || null; PREFS.fit = (c.fit === 0 || c.fit === 1) ? c.fit : null; }
+} catch (e) {}
+function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
+const mySkin = () => PREFS.skin || pick(SKINS);
+const myFit  = () => (PREFS.fit === null ? (Math.random() < 0.5 ? 0 : 1) : PREFS.fit);
+
+/* ---- color de piel: solo tonos calidos, nada de azules ni morados ---- */
+function hexToHsl(hex) {
+  const c = hex2rgb(hex), r = c[0]/255, g = c[1]/255, b = c[2]/255;
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b), l = (mx+mn)/2;
+  let h = 0, sat = 0;
+  if (mx !== mn) {
+    const d = mx-mn;
+    sat = l > 0.5 ? d/(2-mx-mn) : d/(mx+mn);
+    if (mx === r) h = ((g-b)/d + (g<b?6:0));
+    else if (mx === g) h = (b-r)/d + 2;
+    else h = (r-g)/d + 4;
+    h *= 60;
+  }
+  return [h, sat, l];
+}
+function hslToHex(h, sat, l) {
+  h = ((h % 360) + 360) % 360;
+  const c2 = (1 - Math.abs(2*l-1)) * sat, x = c2 * (1 - Math.abs(((h/60) % 2) - 1)), m = l - c2/2;
+  let r=0,g=0,b=0;
+  if (h < 60) { r=c2; g=x; } else if (h < 120) { r=x; g=c2; }
+  else if (h < 180) { g=c2; b=x; } else if (h < 240) { g=x; b=c2; }
+  else if (h < 300) { r=x; b=c2; } else { r=c2; b=x; }
+  const to = v => Math.round((v+m)*255).toString(16).padStart(2,'0');
+  return '#' + to(r) + to(g) + to(b);
+}
+/* fuerza cualquier color a la franja de pieles reales (rojizo a ambar).
+   Solo se marca como corregido si el matiz era frio de verdad: los tonos
+   de piel legitimos pasan intactos. */
+const SKIN_H0 = 10, SKIN_H1 = 48;
+function warmSkin(hex) {
+  if (!/^#?[0-9a-fA-F]{6}$/.test(hex)) return null;
+  if (hex[0] !== '#') hex = '#' + hex;
+  let [h, sat, l] = hexToHsl(hex);
+  h = ((h % 360) + 360) % 360;
+  const cold = !(h >= SKIN_H0 && h <= SKIN_H1) && sat > 0.06;   /* gris casi puro vale */
+  if (cold) h = (h > 180) ? 24 : clamp(h, SKIN_H0, SKIN_H1);    /* azules/morados -> marron */
+  h = clamp(h, SKIN_H0, SKIN_H1);
+  l = clamp(l, 0.05, 0.97);
+  /* la piel clara admite mucha saturacion; la oscura casi ninguna */
+  const maxS = l > 0.78 ? 0.90 : (l > 0.45 ? 0.72 : 0.80);   /* corta el neon, no la piel oscura */
+  sat = Math.min(sat, maxS);
+  return { hex: hslToHex(h, sat, l), corrected: cold };
+}
 
 /* ------------------------- teclas reasignables ----------------------- */
 const DEFAULT_KEYS = {
@@ -278,7 +368,6 @@ function newUpgradeState() {
            crit:0, lowhp:0, nadeRadius:0, armor:0, iframes:0, stamina:0, rate:0, lifesteal:0,
            poisonRes:0, dashReload:false, cheatDeath:0, drops:0, freeMelee:false, taken:[] };
 }
-
 /* ------------------------------ lienzo ------------------------------- */
 const cv = $('game');
 const ctx = cv.getContext('2d', { alpha:false });
@@ -926,6 +1015,25 @@ const ENEMIES = {
   franklin:{ id:'franklin', name:'FRANKLIN', hp:70, speed:3.6, radius:0.26, scaleX:0.44, scaleY:0.52,
     kind:'melee', dmg:14, cd:0.7, sight:20, score:180, tex:{w:112,h:176}, drop:0.4, minion:true,
     look:{ skin:'#4a2c1a', shirt:'#c9a227', pants:'#2c2016', hair:'#120c08', headRatio:0.34, angry:true, shout:true } },
+  tiza:   { id:'tiza', name:'PROF. DE PIZARRA', hp:58, speed:1.8, radius:0.30, scaleX:0.58, scaleY:0.94,
+    kind:'ranged', attack:'burst3', dmg:8, cd:2.2, projSpeed:7.4, sight:18, keepMin:4, keepMax:10,
+    score:150, tex:{w:128,h:208}, drop:0.55,
+    look:{ shirt:'#e6e2d4', pants:'#4a4a52', hair:'#6b6b6b', headRatio:0.27, glasses:true, emoji:'📐' } },
+  becario:{ id:'becario', name:'BECARIO', hp:34, speed:4.2, radius:0.26, scaleX:0.52, scaleY:0.88,
+    kind:'melee', attack:'boom', dmg:34, cd:1, sight:22, score:170, tex:{w:128,h:208}, drop:0.35,
+    look:{ shirt:'#d8a52e', pants:'#7a5a12', hair:'#2b2b2b', headRatio:0.28, angry:true, shout:true, emoji:'🧨' } },
+  fisica: { id:'fisica', name:'PROF. DE FÍSICA', hp:50, speed:1.1, radius:0.30, scaleX:0.56, scaleY:0.96,
+    kind:'ranged', attack:'sniper', dmg:26, cd:3.4, projSpeed:16, sight:34, keepMin:7, keepMax:20,
+    score:220, tex:{w:128,h:208}, drop:0.6,
+    look:{ shirt:'#274b6b', pants:'#1b2f42', hair:'#3a2a1c', headRatio:0.26, glasses:true, emoji:'🔭' } },
+  enfermera:{ id:'enfermera', name:'ENFERMERÍA', hp:64, speed:2.0, radius:0.30, scaleX:0.58, scaleY:0.92,
+    kind:'ranged', attack:'heal', dmg:0, cd:3.0, sight:20, keepMin:5, keepMax:12,
+    score:260, tex:{w:128,h:208}, drop:0.7,
+    look:{ shirt:'#f2f2f2', pants:'#cfd6dd', hair:'#5a3a22', headRatio:0.27, emoji:'💊' } },
+  bedel:  { id:'bedel', name:'BEDEL CON ESCUDO', hp:110, speed:1.35, radius:0.42, scaleX:0.78, scaleY:1.02,
+    kind:'melee', dmg:18, cd:1.2, sight:16, score:240, tex:{w:150,h:214}, drop:0.7, armor:0.45,
+    look:{ shirt:'#4f5b3a', pants:'#333a26', hair:'#3a3a3a', headRatio:0.25, shoulders:0.86, angry:true,
+           vest:'#7a8a5a', emoji:'🛡️' } },
   mera:   { id:'mera', name:'EJÉRCITO MERA', hp:60, speed:4.0, radius:0.28, scaleX:0.55, scaleY:0.92,
     kind:'melee', dmg:12, cd:0.6, sight:24, score:150, tex:{w:128,h:208}, drop:0.3, minion:true,
     look:{ shirt:'#f2f2f2', pants:'#d8d8d8', hair:'#1d1d1d', headRatio:0.26, redEyes:true, angry:true, shout:true } }
@@ -998,11 +1106,12 @@ function spriteOf(def, state, frame, vr) {
   });
 }
 /* jugadores: piel variable, ropa SIEMPRE blanca */
-function playerSprite(skin, weaponKey, state, frame, down) {
-  const key = 'P|'+skin+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0);
+function playerSprite(skin, fit, weaponKey, state, frame, down) {
+  const o = OUTFITS[fit] || OUTFITS[0];
+  const key = 'P|'+skin+'|'+o.id+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0);
   return sprite(key, 128, 208, (c,W,H) => {
-    if (down) { corpse(c,W,H,{shirt:'#e8e8e8', skin:skin}); return; }
-    figure(c,W,H,{ skin:skin, shirt:'#f4f4f4', pants:'#e2e2e2', hair:'#2a1f18',
+    if (down) { corpse(c,W,H,{shirt:o.shirt, skin:skin}); return; }
+    figure(c,W,H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:'#2a1f18',
       headRatio:0.26, shoulders:0.66, swing: state==='walk'?SWING[frame&3]:0,
       attack: state==='attack', weapon: weaponKey });
   });
@@ -1129,9 +1238,9 @@ function diffScale(isBoss) {                            /* dificultad base x nº
 }
 
 /* ------------------------------ jugador ------------------------------ */
-function makePlayer(id, nick, skin, order) {
+function makePlayer(id, nick, skin, order, fit) {
   return {
-    id, nick, skin, order, x:MAP.spawn?MAP.spawn.x:5, y:MAP.spawn?MAP.spawn.y:5, ang:-Math.PI/2,
+    id, nick, skin, order, fit: fit|0, x:MAP.spawn?MAP.spawn.x:5, y:MAP.spawn?MAP.spawn.y:5, ang:-Math.PI/2,
     hp:100, maxhp:100, armor:0, down:false, downT:0, reviveT:0, alive:true,
     weapon:1, walk:0, anim:0, radius:0.28, isLocal:false, lastSeen:0,
     tx:0, ty:0, tang:0                                   /* interpolacion de red */
@@ -1216,11 +1325,12 @@ class Enemy {
     this.phase2 = false; this.blink = 0;
     this.dashT = def.dashEvery||def.chargeEvery||0; this.dashing = 0;
     this.summonedOnce = false; this.minionDeathT = -999; this.minions = [];
-    this.burst = 0; this.burstT = 0; this.owner = ownerBoss||null;
+    this.burst = 0; this.burstT = 0; this.aiming = 0; this.owner = ownerBoss||null;
     this.knock = 0; this.knockX = 0; this.knockY = 0;
   }
   hurt(amount, byId) {
     if (!this.alive) return;
+    if (this.def.armor) amount *= (1 - this.def.armor);   /* escudo */
     this.hp -= amount; this.flash = 0.16;
     spawnParts('blood', this.x, this.y, 0.55, this.boss?9:5, 1.6, 2.2, 0.8);
     Snd.hit();
@@ -1339,6 +1449,21 @@ class Enemy {
         const n = this.phase2 ? 12 : 8, base = toA + rnd(-0.2,0.2);
         for (let i=0;i<n;i++) this.shoot(base + i*TAU/n, 'boss', def.projSpeed, this.dmg, {scale:0.30});
         this.cd = def.cd*rate; this.anim = 0.6; Snd.roar();
+      } else if (def.attack === 'burst3') {              /* prof. de pizarra: rafaga */
+        this.burst = 3; this.burstT = 0; this.cd = def.cd*rate; this.anim = 0.4;
+      } else if (def.attack === 'sniper') {              /* prof. de fisica: tiro largo */
+        this.aiming = 0.55; this.cd = def.cd*rate; this.anim = 0.8;
+      } else if (def.attack === 'heal') {                /* enfermeria: cura a los suyos */
+        let n = 0;
+        for (const o of G.enemies) {
+          if (!o.alive || o === this || o.hp >= o.maxhp) continue;
+          if (dist2(o.x,o.y,this.x,this.y) > 36) continue;
+          o.hp = Math.min(o.maxhp, o.hp + o.maxhp*0.18);
+          spawnFX('boom', o.x, o.y, 0.5, 0.35);
+          n++;
+        }
+        if (n) { Snd.tone(680, 0.2, 'sine', 0.05, 980); this.anim = 0.5; }
+        this.cd = def.cd*rate;
       } else if (def.kind === 'ranged') {                /* vigilante raso */
         this.shoot(toA+rnd(-0.06,0.06), 'bullet', def.projSpeed, this.dmg, {scale:0.22});
         this.cd = def.cd*rate; this.anim = 0.3;
@@ -1346,8 +1471,18 @@ class Enemy {
     }
     if (this.burst > 0) {
       this.burstT -= dt;
-      if (this.burstT <= 0) { this.shoot(toA+rnd(-0.05,0.05), 'formula', def.projSpeed, this.dmg, {scale:0.36});
-        this.burst--; this.burstT = 0.16; }
+      if (this.burstT <= 0) {
+        const spr = def.attack === 'burst3' ? 'bullet' : 'formula';
+        this.shoot(toA+rnd(-0.05,0.05), spr, def.projSpeed, this.dmg, {scale: spr==='bullet'?0.24:0.36});
+        this.burst--; this.burstT = 0.16;
+      }
+    }
+    if (this.aiming > 0) {                              /* el francotirador telegrafia */
+      this.aiming -= dt;
+      if (this.aiming <= 0 && this.los) {
+        this.shoot(toA, 'bullet', def.projSpeed, this.dmg, { scale:0.26 });
+        Snd.tone(900, 0.12, 'square', 0.05, 300);
+      }
     }
 
     /* --------- desplazamiento --------- */
@@ -1362,6 +1497,12 @@ class Enemy {
 
     /* --------- cuerpo a cuerpo / atropello --------- */
     if (def.kind === 'melee' || this.dashing > 0 || def.attack === 'charge' || def.attack === 'dash') {
+      if (def.attack === 'boom' && d < this.radius + t.radius + 0.6) {
+        explode(this.x, this.y, 2.6, 0, this.id);       /* becario: se inmola */
+        damagePlayer(t, this.dmg, this.x, this.y);
+        this.hp = 0; this.die();
+        return;
+      }
       if (d < this.radius + t.radius + 0.35 && (t.z || 0) < 0.35) {
         this.mcd = (this.mcd||0) - dt;
         if (this.mcd <= 0) {
@@ -1814,6 +1955,11 @@ function spawnRoomEnemies() {
   const spots = freeCells(MAP.spawn, 9);
   const n = rndi(10, 15);                                /* entre 10 y 15 enemigos por sala */
   const pool = ['runner','runner','shooter','shooter','brute'];
+  if (G.room >= 3) pool.push('tiza','tiza');
+  if (G.room >= 5) pool.push('becario','bedel');
+  if (G.room >= 8) pool.push('fisica','tiza');
+  if (G.room >= 12) pool.push('enfermera','bedel','fisica');
+  if (G.room >= 18) pool.push('becario','enfermera','brute');
   for (let i=0;i<n && spots.length;i++) {
     const s = spots.splice((Math.random()*spots.length)|0, 1)[0];
     G.enemies.push(new Enemy(ENEMIES[pick(pool)], s.x, s.y, null));
@@ -1839,11 +1985,11 @@ function startRoom(n, seed) {
       p.down = false; p.hp = Math.round((p.maxhp||100)*0.30);
       if (p.isLocal) addMsg('TE LEVANTAN AL ENTRAR EN LA SALA', '#8ce89b');
     }
-    if (p.isLocal) {
+    if (p.isLocal && p.up) {
       updateDir(p);
       p.armor = Math.min(100, p.armor + p.up.armor);
       p.canteen = Math.min(p.canteenMax, p.canteen + 1);
-    }
+    } else if (p.isLocal) { updateDir(p); }
   }
   spawnRoomEnemies();
   buildFlows([...G.players.values()].filter(p=>!p.down));
@@ -1924,7 +2070,7 @@ const NET = {
     this.peer.on('open', () => {
       this.online = true;
       G.isHost = true; G.meId = 'HOST'; G.hostId = 'HOST';
-      const p = makePlayer('HOST', nick, pick(SKINS), 1);
+      const p = makePlayer('HOST', nick, mySkin(), 1, myFit());
       G.players.clear(); G.players.set('HOST', p);
       onReady(code);
     });
@@ -1935,7 +2081,10 @@ const NET = {
         const id = conn.peer;
         this.conns.set(id, conn);
         const order = G.players.size + 1;
-        const pl = makePlayer(id, conn.metadata && conn.metadata.nick ? String(conn.metadata.nick).slice(0,14) : 'JUGADOR', pick(SKINS), order);
+        const md = conn.metadata || {};
+        const skin = (typeof md.skin === 'string' && warmSkin(md.skin)) ? warmSkin(md.skin).hex : pick(SKINS);
+        const fit = (md.fit === 0 || md.fit === 1) ? md.fit : (Math.random()<0.5?0:1);
+        const pl = makePlayer(id, md.nick ? String(md.nick).slice(0,16) : 'JUGADOR', skin, order, fit);
         G.players.set(id, pl);
         conn.send(JSON.stringify({ t:'welcome', you:id, host:'HOST', players:serializePlayers(), diff:G.diff, ff:G.ff }));
         this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
@@ -1958,7 +2107,8 @@ const NET = {
     this.peer = new Peer({ debug:0 });
     this.isHost = false;
     this.peer.on('open', () => {
-      const conn = this.peer.connect('torremar-' + code.toUpperCase(), { metadata:{ nick }, reliable:true });
+      const conn = this.peer.connect('torremar-' + code.toUpperCase(),
+        { metadata:{ nick, skin: PREFS.skin || null, fit: PREFS.fit }, reliable:true });
       const timer = setTimeout(() => { if (!this.online) onErr('No se pudo conectar con la sala ' + code); }, 9000);
       conn.on('open', () => {
         clearTimeout(timer);
@@ -1990,7 +2140,8 @@ const NET = {
 };
 function serializePlayers() {
   const out = [];
-  for (const p of G.players.values()) out.push({ id:p.id, nick:p.nick, skin:p.skin, order:p.order, hp:p.hp, maxhp:p.maxhp, down:p.down });
+  for (const p of G.players.values()) out.push({ id:p.id, nick:p.nick, skin:p.skin, fit:p.fit|0,
+    order:p.order, hp:p.hp, maxhp:p.maxhp, down:p.down });
   return out;
 }
 /* -------------------- instantanea del mundo (host) -------------------- */
@@ -2055,7 +2206,7 @@ function onNet(from, m) {
       G.meId = m.you; G.hostId = m.host; G.diff = m.diff; G.ff = m.ff;
       G.players.clear();
       for (const s of m.players) {
-        const p = makePlayer(s.id, s.nick, s.skin, s.order);
+        const p = makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0);
         p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down;
         G.players.set(s.id, p);
       }
@@ -2070,8 +2221,8 @@ function onNet(from, m) {
       const old = new Map(G.players);
       G.players.clear();
       for (const s of m.players) {
-        let p = old.get(s.id) || makePlayer(s.id, s.nick, s.skin, s.order);
-        p.nick = s.nick; p.skin = s.skin; p.order = s.order;
+        let p = old.get(s.id) || makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0);
+        p.nick = s.nick; p.skin = s.skin; p.order = s.order; p.fit = s.fit|0;
         if (!p.isLocal) { p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down; }
         G.players.set(s.id, p);
       }
@@ -2265,7 +2416,7 @@ function collectSprites() {
     if (pl.isLocal) continue;
     const wk = WEAPONS[pl.weapon] ? WEAPONS[pl.weapon].key : 'GLOCK';
     const st = pl.down ? 'dead' : (pl.anim>0 ? 'attack' : 'walk');
-    const tex = playerSprite(pl.skin, wk, st, (pl.walk|0)&3, pl.down);
+    const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down);
     list.push({ x:pl.x, y:pl.y, tex, sx:pl.down?0.85:0.58, sy:pl.down?0.30:0.92,
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
   }
@@ -2909,6 +3060,65 @@ function renderKeys() {
     box.appendChild(grid);
   }
 }
+/* ------------------------- pantalla de personaje --------------------- */
+let charSkin = PREFS.skin || '#e8bd93', charFit = (PREFS.fit === null ? 0 : PREFS.fit);
+function skinFieldColor(u, v) {                        /* u: matiz calido, v: claridad */
+  const h = 11 + u * 33;                               /* 11º a 44º: rojizo a ambar */
+  const l = 0.965 - v * 0.90;
+  const sat = 0.16 + 0.34 * (1 - Math.abs(l - 0.5) / 0.5);
+  return hslToHex(h, clamp(sat, 0.10, 0.55), clamp(l, 0.055, 0.965));
+}
+function drawSkinField() {
+  const cn = $('skin-field'), c = cn.getContext('2d');
+  const W = cn.width, H = cn.height;
+  for (let y = 0; y < H; y += 2) {
+    for (let x = 0; x < W; x += 3) {
+      c.fillStyle = skinFieldColor(x/W, y/H);
+      c.fillRect(x, y, 3, 2);
+    }
+  }
+  c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 1;
+  c.strokeRect(0.5, 0.5, W-1, H-1);
+}
+function renderCharUI(note) {
+  $('skin-hex').value = charSkin;
+  $('skin-dot').style.background = charSkin;
+  $('skin-note').textContent = note || 'Se admite cualquier HEX: los tonos fríos se ajustan al cálido más cercano.';
+  const pl = $('skin-presets');
+  if (!pl.dataset.done) {
+    for (const sk of SKINS) {
+      const d = document.createElement('div');
+      d.style.cssText = 'width:26px;height:26px;border-radius:5px;border:2px solid #6b5a3c;cursor:pointer;background:'+sk;
+      d.onclick = () => { charSkin = sk; renderCharUI('Tono de la paleta natural.'); };
+      pl.appendChild(d);
+    }
+    pl.dataset.done = '1';
+  }
+  const fl = $('fit-list');
+  fl.innerHTML = '';
+  for (const o of OUTFITS) {
+    const row = document.createElement('div');
+    row.className = 'pitem';
+    row.style.cursor = 'pointer';
+    row.style.border = (o.id === charFit) ? '2px solid #ffd45e' : '2px solid transparent';
+    row.innerHTML = '<div class="dot" style="background:'+o.shirt+'"></div>' +
+                    '<div class="dot" style="background:'+o.pants+'"></div>' +
+                    '<div class="grow" style="font-size:14px">'+o.name+'</div>';
+    row.onclick = () => { charFit = o.id; renderCharUI(); };
+    fl.appendChild(row);
+  }
+  const pv = $('char-preview'), pc = pv.getContext('2d');
+  pc.clearRect(0,0,pv.width,pv.height);
+  pc.imageSmoothingEnabled = true;
+  pc.drawImage(playerSprite(charSkin, charFit, 'GLOCK', 'walk', 0, false), 0, 0, pv.width, pv.height);
+}
+function openChar() {
+  charSkin = PREFS.skin || charSkin;
+  if (PREFS.fit !== null) charFit = PREFS.fit;
+  drawSkinField();
+  renderCharUI();
+  showScreen('scr-char');
+}
 function openUpgrades() {
   G.state = 'upgrade';
   if (document.pointerLockElement) document.exitPointerLock();
@@ -2995,8 +3205,8 @@ function startRunHost() {
 function soloRun() {
   NET.online = false; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
   G.players.clear();
-  const nick = ($('nick').value || 'ALIRO MERA').slice(0,14).toUpperCase();
-  const p = makePlayer('SOLO', nick, pick(SKINS), 1);
+  const nick = ($('nick').value || 'ALIRO MERA').slice(0,16).toUpperCase();
+  const p = makePlayer('SOLO', nick, mySkin(), 1, myFit());
   G.players.set('SOLO', p);
   G.diff = 0; G.ff = 0; G.nPlayers = 1;
   beginRun(0, (Math.random()*1e9)|0);
@@ -3007,7 +3217,12 @@ function lockPointer() {
   const pr = cv.requestPointerLock && cv.requestPointerLock();
   if (pr && pr.catch) pr.catch(()=>{});
 }
+function typing(ev) {                                   /* escribiendo en un campo del menu */
+  const t = ev.target;
+  return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+}
 window.addEventListener('keydown', (ev) => {
+  if (typing(ev)) return;                              /* deja pasar espacios y flechas al input */
   IN.keys[ev.code] = true;
   if (['Tab','Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(ev.code)) ev.preventDefault();
   if (G.state !== 'run') return;
@@ -3016,7 +3231,7 @@ window.addEventListener('keydown', (ev) => {
   if (ev.code === KEYS.mute) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
   if (ev.code === 'Escape') { if (document.pointerLockElement) document.exitPointerLock(); else openPause(); }
 });
-window.addEventListener('keyup', (ev) => { IN.keys[ev.code] = false; });
+window.addEventListener('keyup', (ev) => { if (typing(ev)) return; IN.keys[ev.code] = false; });
 window.addEventListener('blur', () => { IN.keys = Object.create(null); IN.mouse = Object.create(null); });
 cv.addEventListener('mousedown', (ev) => {
   Snd.init();
@@ -3044,20 +3259,43 @@ document.addEventListener('pointerlockchange', () => {
 
 /* --------------------------- botones del DOM ------------------------- */
 $('btn-host').onclick = () => {
-  const nick = ($('nick').value || 'ALIRO MERA').slice(0,14).toUpperCase();
+  const nick = ($('nick').value || 'ALIRO MERA').slice(0,16).toUpperCase();
   NET.host(nick, (code) => { showScreen('scr-lobby'); renderLobby(); addMsg('SALA CREADA: ' + code, '#8ce89b'); },
            (err) => { $('net-state').textContent = err; });
 };
 $('btn-join').onclick = () => { showScreen('scr-join'); $('join-msg').textContent = ''; };
 $('btn-join-go').onclick = () => {
   const code = ($('join-code').value||'').trim().toUpperCase();
-  const nick = ($('nick').value || 'JUGADOR').slice(0,14).toUpperCase();
+  const nick = ($('nick').value || 'JUGADOR').slice(0,16).toUpperCase();
   if (!code) { $('join-msg').textContent = 'Escribe el código de la sala.'; return; }
   $('join-msg').textContent = 'Conectando…';
   NET.join(code, nick, () => { $('join-msg').textContent = 'Conectado. Esperando datos…'; },
            (err) => { $('join-msg').textContent = err; });
 };
 $('btn-join-back').onclick = () => showScreen('scr-main');
+$('btn-char').onclick = () => openChar();
+$('btn-char-save').onclick = () => {
+  PREFS.skin = charSkin; PREFS.fit = charFit; saveChar();
+  showScreen('scr-main');
+};
+$('btn-char-random').onclick = () => {
+  PREFS.skin = null; PREFS.fit = null; saveChar();
+  charSkin = pick(SKINS); charFit = (Math.random()<0.5?0:1);
+  renderCharUI('Vuelves al sorteo automático al entrar en partida.');
+};
+$('skin-field').addEventListener('mousedown', (ev) => {
+  const cn = $('skin-field'), r = cn.getBoundingClientRect();
+  const u = clamp((ev.clientX - r.left)/r.width, 0, 1), v = clamp((ev.clientY - r.top)/r.height, 0, 1);
+  charSkin = skinFieldColor(u, v);
+  renderCharUI('Tono elegido del selector cálido.');
+});
+$('skin-hex').addEventListener('change', () => {
+  const res = warmSkin($('skin-hex').value.trim());
+  if (!res) { renderCharUI('HEX no válido: usa el formato #rrggbb.'); return; }
+  charSkin = res.hex;
+  renderCharUI(res.corrected ? 'Ese color era frío: ajustado al tono de piel cálido más cercano.'
+                             : 'Tono aceptado.');
+});
 $('btn-keys').onclick = () => { keysReturn = 'scr-main'; renderKeys(); showScreen('scr-keys'); };
 $('btn-keys-back').onclick = () => {
   if (keysReturn === 'scr-pause') { showScreen('scr-pause'); }
