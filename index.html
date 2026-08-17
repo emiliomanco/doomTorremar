@@ -266,8 +266,10 @@ function rollModifier(roomNo, seed) {
 }
 const SKINS = ['#f7e0c8','#f2d3b3','#e8bd93','#d8a273','#c08553','#a06a3f','#845331','#6b4526','#5f3a20','#422814','#33200f','#241608'];
 const OUTFITS = [
-  { id:0, name:'CAMISA BLANCA · PANTALÓN GRIS',      shirt:'#ffffff', pants:'#595959' },
-  { id:1, name:'CAMISA GRIS · PANTALÓN AZUL MARINO', shirt:'#8f8f8f', pants:'#061036' }
+  { id:0, name:'POLO BLANCO · PANTALÓN GRIS',        shirt:'#ffffff', pants:'#595959',
+    uniform:'polo' },
+  { id:1, name:'CAMISETA GRIS · PANTALÓN AZUL MARINO', shirt:'#a4a4a8', pants:'#061036',
+    uniform:'tee', cuff:['#1b2352','#7d2231'] }
 ];
 /* preferencias de personaje: null = nunca tocado -> aleatorio como antes */
 const PREFS = { skin:null, fit:null };
@@ -1017,12 +1019,21 @@ function figure(c, W, H, o) {
   /* torso */
   roundRect(c, cx-shW/2, bodyTop, shW, torsoH, shW*0.16, o.shirt);
   if (o.vest) { c.fillStyle=o.vest; c.fillRect(cx-shW*0.28, bodyTop, shW*0.56, torsoH*0.72); }
-  if (o.crest) crestTorremar(c, cx - shW*0.26, bodyTop + torsoH*0.16, shW*0.26);
-  /* brazos */
+  if (o.uniform) drawUniform(c, o.uniform, cx, bodyTop, shW, torsoH, skin);
+  /* brazos: la manga cubre solo la fraccion o.sleeve (1 = manga larga) */
   const armW = shW*0.20, armLen = torsoH*0.84, shoulderY = bodyTop+torsoH*0.12;
+  const manga = (o.sleeve === undefined) ? 1 : o.sleeve;
   const arm = (sx,ang) => {
     c.save(); c.translate(cx+sx, shoulderY); c.rotate(ang);
-    roundRect(c, -armW/2, -armW*0.4, armW, armLen, armW*0.45, o.shirt);
+    roundRect(c, -armW/2, -armW*0.4, armW, armLen, armW*0.45, skin);
+    if (manga > 0) {
+      const ml = armLen*manga;
+      roundRect(c, -armW*0.58, -armW*0.4, armW*1.16, ml, armW*0.42, o.shirt);
+      if (o.cuff) {                                     /* ribete de la camiseta */
+        c.fillStyle = o.cuff[0]; c.fillRect(-armW*0.58, -armW*0.4+ml-armW*0.30, armW*1.16, armW*0.16);
+        c.fillStyle = o.cuff[1]; c.fillRect(-armW*0.58, -armW*0.4+ml-armW*0.14, armW*1.16, armW*0.14);
+      }
+    }
     ellipse(c, 0, armLen-armW*0.15, armW*0.52, armW*0.52, skin);
     c.restore();
   };
@@ -1219,40 +1230,176 @@ function drawQuad(c, W, H) {                        /* cuadrón de Roberto */
   c.fillStyle='#d8d8dc'; c.fillRect(W*0.30, y+H*0.03, W*0.40, 3);
   c.fillStyle='#f0d060'; c.fillRect(W*0.14, y+H*0.02, W*0.08, H*0.05);
 }
-/* Escudo del colegio Torremar: torre sobre el mar, nada mas. Se dibuja
-   sobre el pecho de la camisa del uniforme. */
+/* ---------------------------------------------------------------------
+   Escudo del colegio Torremar, tal cual: cuartelado con borde granate y
+   filete blanco. Arriba a la izquierda la torre de ladrillo sobre campo de
+   oro viejo; arriba a la derecha tres estrellas sobre azul marino; abajo a
+   la izquierda las olas del mar; abajo a la derecha el libro abierto. Sobre
+   el escudo, la cinta con el lema DUC IN ALTUM.
+   --------------------------------------------------------------------- */
+const CREST = { borde:'#8c1d2b', filete:'#f6f2e6', oro:'#a3974e', azul:'#161f4a',
+                blanco:'#fbfaf5', ladrillo:'#a8352a', ladrilloD:'#7d2018', cinta:'#ffffff' };
 function crestTorremar(c, x, y, w) {
-  const h = w*1.22;
-  c.save();
-  c.beginPath();                                        /* silueta de escudo */
-  c.moveTo(x, y);
-  c.lineTo(x+w, y);
-  c.lineTo(x+w, y+h*0.58);
-  c.quadraticCurveTo(x+w, y+h*0.92, x+w/2, y+h);
-  c.quadraticCurveTo(x, y+h*0.92, x, y+h*0.58);
-  c.closePath();
-  c.fillStyle = '#0b1c46'; c.fill();
-  c.lineWidth = Math.max(0.8, w*0.09); c.strokeStyle = '#d8b64a'; c.stroke();
-  c.save(); c.clip();
-  c.fillStyle = '#1d4f86';                              /* mar */
-  c.fillRect(x, y+h*0.60, w, h*0.40);
-  c.strokeStyle = '#cfe4f5'; c.lineWidth = Math.max(0.6, w*0.055);
-  for (let i=0;i<2;i++) {
-    const yy = y + h*(0.68 + i*0.13);
+  const h = w*1.16;
+  const cinta = h*0.20;                                  /* la cinta va por encima */
+  const sy = y + cinta*0.72;
+  const sh = h - cinta*0.72;
+  /* silueta del escudo, usada dos veces: borde y campo interior */
+  const forma = (px, py, pw, ph) => {
     c.beginPath();
-    c.moveTo(x+w*0.08, yy);
-    c.quadraticCurveTo(x+w*0.32, yy-h*0.05, x+w*0.54, yy);
-    c.quadraticCurveTo(x+w*0.76, yy+h*0.05, x+w*0.94, yy);
+    c.moveTo(px, py + ph*0.06);
+    c.quadraticCurveTo(px, py, px + pw*0.08, py);
+    c.lineTo(px + pw*0.92, py);
+    c.quadraticCurveTo(px + pw, py, px + pw, py + ph*0.06);
+    c.lineTo(px + pw, py + ph*0.52);
+    c.quadraticCurveTo(px + pw*0.98, py + ph*0.88, px + pw/2, py + ph);
+    c.quadraticCurveTo(px + pw*0.02, py + ph*0.88, px, py + ph*0.52);
+    c.closePath();
+  };
+  c.save();
+  forma(x, sy, w, sh); c.fillStyle = CREST.borde; c.fill();
+  const m = w*0.085;                                     /* grosor del borde granate */
+  forma(x+m, sy+m, w-m*2, sh-m*1.25); c.fillStyle = CREST.filete; c.fill();
+  const f = w*0.030;                                     /* filete blanco */
+  forma(x+m+f, sy+m+f, w-(m+f)*2, sh-(m+f)*1.25);
+  c.save(); c.clip();
+  const ix = x+m+f, iy = sy+m+f, iw = w-(m+f)*2, ih = sh-(m+f)*1.25;
+  const mx = ix + iw/2, my = iy + ih*0.47;
+  /* --- cuarteles --- */
+  c.fillStyle = CREST.oro;    c.fillRect(ix, iy, iw/2, my-iy);              /* sup. izq. */
+  c.fillStyle = CREST.azul;   c.fillRect(mx, iy, iw/2, my-iy);              /* sup. der. */
+  c.fillStyle = CREST.blanco; c.fillRect(ix, my, iw/2, iy+ih-my);           /* inf. izq. */
+  c.fillStyle = CREST.oro;    c.fillRect(mx, my, iw/2, iy+ih-my);           /* inf. der. */
+  /* --- torre de ladrillo --- */
+  const tw = iw*0.22, tx = ix + iw*0.25 - tw/2, ty = iy + ih*0.10, th = (my-iy)*0.76;
+  c.fillStyle = CREST.ladrillo; c.fillRect(tx, ty, tw, th);
+  c.fillStyle = CREST.ladrillo; c.fillRect(tx - tw*0.16, ty, tw*1.32, th*0.16);
+  c.fillStyle = CREST.oro;                                /* almenas */
+  for (let i=0;i<2;i++) c.fillRect(tx - tw*0.16 + tw*(0.40 + i*0.52), ty, tw*0.26, th*0.16);
+  c.fillStyle = CREST.ladrilloD;                          /* hiladas */
+  for (let i=1;i<5;i++) c.fillRect(tx, ty + th*(0.16 + i*0.17), tw, Math.max(0.5, th*0.030));
+  c.fillStyle = CREST.ladrilloD;                          /* vano */
+  c.fillRect(tx + tw*0.34, ty + th*0.62, tw*0.32, th*0.38);
+  /* --- tres estrellas --- */
+  const estrella = (ex, ey, r) => {
+    c.beginPath();
+    for (let i=0;i<10;i++) {
+      const a = -Math.PI/2 + i*Math.PI/5, rr = (i%2) ? r*0.42 : r;
+      const px = ex + Math.cos(a)*rr, py = ey + Math.sin(a)*rr;
+      i ? c.lineTo(px,py) : c.moveTo(px,py);
+    }
+    c.closePath(); c.fillStyle = CREST.blanco; c.fill();
+  };
+  const er = iw*0.075, ey = iy + (my-iy)*0.52;
+  for (let i=0;i<3;i++) estrella(mx + iw*(0.13 + i*0.12), ey, er);
+  /* --- olas --- */
+  c.strokeStyle = CREST.azul; c.lineWidth = Math.max(0.7, ih*0.030);
+  for (let i=0;i<4;i++) {
+    const yy = my + (iy+ih-my)*(0.16 + i*0.16);
+    c.beginPath(); c.moveTo(ix + iw*0.04, yy);
+    for (let k=0;k<3;k++) {
+      const x0 = ix + iw*(0.04 + k*0.147);
+      c.quadraticCurveTo(x0 + iw*0.037, yy - ih*0.045, x0 + iw*0.074, yy);
+      c.quadraticCurveTo(x0 + iw*0.110, yy + ih*0.045, x0 + iw*0.147, yy);
+    }
     c.stroke();
   }
-  c.fillStyle = '#e8d79a';                              /* torre */
-  c.fillRect(x+w*0.38, y+h*0.22, w*0.24, h*0.40);
-  c.fillRect(x+w*0.33, y+h*0.18, w*0.34, h*0.07);
-  c.fillStyle = '#0b1c46';
-  for (let i=0;i<3;i++) c.fillRect(x+w*(0.36+i*0.11), y+h*0.18, w*0.05, h*0.07);
-  c.fillStyle = '#8d6b1e';
-  c.fillRect(x+w*0.45, y+h*0.36, w*0.10, h*0.16);
+  /* --- libro abierto --- */
+  const bx = mx + iw*0.07, by = my + (iy+ih-my)*0.26, bw = iw*0.36, bh = ih*0.16;
+  c.fillStyle = CREST.blanco;
+  c.beginPath();
+  c.moveTo(bx, by + bh*0.16);
+  c.quadraticCurveTo(bx + bw*0.25, by - bh*0.12, bx + bw*0.5, by + bh*0.12);
+  c.quadraticCurveTo(bx + bw*0.75, by - bh*0.12, bx + bw, by + bh*0.16);
+  c.lineTo(bx + bw, by + bh);
+  c.quadraticCurveTo(bx + bw*0.75, by + bh*0.74, bx + bw*0.5, by + bh*0.92);
+  c.quadraticCurveTo(bx + bw*0.25, by + bh*0.74, bx, by + bh);
+  c.closePath(); c.fill();
+  c.strokeStyle = 'rgba(30,30,40,0.55)'; c.lineWidth = Math.max(0.5, bh*0.06);
+  c.beginPath(); c.moveTo(bx + bw*0.5, by + bh*0.12); c.lineTo(bx + bw*0.5, by + bh*0.92); c.stroke();
+  c.restore();                                            /* fin del recorte */
+  /* --- divisiones internas en blanco --- */
+  c.strokeStyle = CREST.filete; c.lineWidth = Math.max(0.7, w*0.026);
+  c.beginPath(); c.moveTo(mx, iy); c.lineTo(mx, iy+ih); c.stroke();
+  c.beginPath(); c.moveTo(ix, my); c.lineTo(ix+iw, my); c.stroke();
+  /* --- cinta del lema --- */
+  const cw = w*1.16, cxx = x - (cw-w)/2, cy0 = y;
+  c.fillStyle = CREST.cinta;
+  c.beginPath();
+  c.moveTo(cxx, cy0 + cinta*0.30);
+  c.quadraticCurveTo(cxx + cw*0.5, cy0 - cinta*0.30, cxx + cw, cy0 + cinta*0.30);
+  c.lineTo(cxx + cw, cy0 + cinta);
+  c.quadraticCurveTo(cxx + cw*0.5, cy0 + cinta*0.42, cxx, cy0 + cinta);
+  c.closePath(); c.fill();
+  c.strokeStyle = CREST.borde; c.lineWidth = Math.max(0.5, w*0.022); c.stroke();
+  if (w >= 34) {                                          /* el lema solo si se lee */
+    c.fillStyle = '#1a2340';
+    c.font = 'bold ' + Math.round(cinta*0.46) + 'px Georgia, "Times New Roman", serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('DUC IN ALTUM', cxx + cw*0.5, cy0 + cinta*0.60);
+  }
   c.restore();
+}
+/* Los dos uniformes del colegio: polo blanco con el escudo al pecho y
+   camiseta gris de deporte con TORREMAR arqueado y ribetes en el cuello. */
+function drawUniform(c, kind, cx, top, shW, torsoH, skin) {
+  if (kind === 'polo') {
+    const cuelloY = top + torsoH*0.015;
+    c.fillStyle = skin;                                  /* escote */
+    c.beginPath();
+    c.moveTo(cx - shW*0.130, cuelloY);
+    c.lineTo(cx + shW*0.130, cuelloY);
+    c.lineTo(cx, cuelloY + torsoH*0.105);
+    c.closePath(); c.fill();
+    c.fillStyle = '#f1f1ee';                             /* alas del cuello */
+    c.beginPath();
+    c.moveTo(cx - shW*0.235, cuelloY);
+    c.lineTo(cx - shW*0.150, cuelloY);
+    c.lineTo(cx - shW*0.020, cuelloY + torsoH*0.125);
+    c.lineTo(cx - shW*0.175, cuelloY + torsoH*0.105);
+    c.closePath(); c.fill();
+    c.beginPath();
+    c.moveTo(cx + shW*0.235, cuelloY);
+    c.lineTo(cx + shW*0.150, cuelloY);
+    c.lineTo(cx + shW*0.020, cuelloY + torsoH*0.125);
+    c.lineTo(cx + shW*0.175, cuelloY + torsoH*0.105);
+    c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(150,150,150,0.55)';            /* tapeta y botones */
+    c.lineWidth = Math.max(0.6, shW*0.012);
+    c.beginPath();
+    c.moveTo(cx - shW*0.045, cuelloY + torsoH*0.10);
+    c.lineTo(cx - shW*0.045, cuelloY + torsoH*0.30);
+    c.moveTo(cx + shW*0.045, cuelloY + torsoH*0.10);
+    c.lineTo(cx + shW*0.045, cuelloY + torsoH*0.30);
+    c.stroke();
+    c.fillStyle = '#d8d8d4';
+    for (let i=0;i<2;i++) ellipse(c, cx, cuelloY + torsoH*(0.15 + i*0.10), shW*0.018, shW*0.018, '#d8d8d4');
+    crestTorremar(c, cx + shW*0.11, top + torsoH*0.30, shW*0.23);
+  } else if (kind === 'tee') {
+    const cuelloY = top + torsoH*0.02;
+    c.fillStyle = skin;                                  /* escote redondo */
+    ellipse(c, cx, cuelloY + torsoH*0.028, shW*0.165, torsoH*0.062, skin);
+    c.strokeStyle = '#cfcfcf'; c.lineWidth = Math.max(0.8, shW*0.028);
+    c.beginPath(); c.ellipse(cx, cuelloY + torsoH*0.028, shW*0.185, torsoH*0.072, 0, 0, TAU); c.stroke();
+    arcText(c, 'TORREMAR', cx, top + torsoH*0.86, torsoH*0.40,
+            Math.max(4, Math.round(shW*0.108)), '#7d2231', 1.30);
+  }
+}
+/* texto curvado, para el TORREMAR de la camiseta gris */
+function arcText(c, txt, cx, cy, r, size, col, spread) {
+  c.save();
+  c.fillStyle = col;
+  c.font = 'bold ' + size + 'px Georgia, "Times New Roman", serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  const n = txt.length, paso = spread / Math.max(1, n-1), a0 = -spread/2;
+  for (let i=0;i<n;i++) {
+    const a = a0 + i*paso;
+    c.save();
+    c.translate(cx + Math.sin(a)*r, cy - Math.cos(a)*r);
+    c.rotate(a);
+    c.fillText(txt[i], 0, 0);
+    c.restore();
+  }
   c.restore();
 }
 function spriteOf(def, state, frame, vr) {
@@ -1281,7 +1428,8 @@ function playerSprite(skin, fit, weaponKey, state, frame, down) {
     if (down) { corpse(c,W,H,{shirt:o.shirt, skin:skin}); return; }
     figure(c,W,H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:'#2a1f18',
       headRatio:0.26, shoulders:0.66, swing: state==='walk'?SWING[frame&3]:0,
-      attack: state==='attack', weapon: weaponKey, crest:true });
+      attack: state==='attack', weapon: weaponKey,
+      uniform: o.uniform, sleeve: 0.42, cuff: o.cuff });
   });
 }
 
