@@ -333,20 +333,21 @@ function warmSkin(hex) {
 const DEFAULT_KEYS = {
   forward:'KeyW', back:'KeyS', left:'KeyA', right:'KeyD',
   sprint:'ShiftLeft', crouch:'ControlLeft', jump:'Space', dash:'KeyF',
-  fire:'Mouse0', reload:'KeyR', heal:'KeyH',
+  fire:'Mouse0', alt:'Mouse2', reload:'KeyR', heal:'KeyH',
   w1:'Digit1', w2:'Digit2', w3:'Digit3', w4:'Digit4', w5:'Digit5',
   map:'Tab', mute:'KeyM'
 };
 const KEY_LABELS = {
   forward:'Avanzar', back:'Retroceder', left:'Desplazarse a la izquierda', right:'Desplazarse a la derecha',
   sprint:'Sprint (gasta estamina)', crouch:'Agacharse (hitbox reducida)', jump:'Saltar',
-  dash:'Dash / esquivar (i-frames)', fire:'Disparar', reload:'Recargar', heal:'Cantimplora (curar)',
+  dash:'Dash / esquivar (i-frames)', fire:'Disparar', alt:'Fuego alternativo', reload:'Recargar',
+  heal:'Cantimplora (curar)',
   w1:'1 · Machete', w2:'2 · Glock 19', w3:'3 · Remington 870', w4:'4 · M16', w5:'5 · Frag Grenade',
   map:'Mapa', mute:'Silenciar'
 };
 const KEY_SECTIONS = [
   { title:'MOVIMIENTO', keys:['forward','back','left','right','sprint','crouch','jump','dash'] },
-  { title:'COMBATE',    keys:['fire','reload','heal'] },
+  { title:'COMBATE',    keys:['fire','alt','reload','heal'] },
   { title:'ARMAS',      keys:['w1','w2','w3','w4','w5'] },
   { title:'INTERFAZ',   keys:['map','mute'] }
 ];
@@ -371,6 +372,20 @@ const WEAPONS = [
   { id:3, key:'M16',       name:'M16',           ammo:'bullets', cost:1, rate:0.095, dmg:17, range:70,  pellets:1, spread:0.016, kick:6, noise:16, auto:true,  cross:'rifle', mag:30, reload:1.95, casing:'brass' },
   { id:4, key:'GRENADE',   name:'FRAG GRENADE',  ammo:'nades',   cost:1, rate:1.05, dmg:0,  range:0,    pellets:0, spread:0, kick:12, noise:8,  auto:false, cross:'nade', proj:true }
 ];
+/* Cada arma tiene un segundo modo de disparo. Solo redefine lo que cambia:
+   el resto se hereda del arma base. */
+const ALT = [
+  { name:'TAJO PESADO',  rate:0.86, dmg:88,  range:2.25, pellets:4, spread:0.34, kick:22,
+    stamina:26, noise:7,  cross:'melee',   aturde:1 },
+  { name:'TIRO AFINADO', rate:0.46, dmg:38,  range:82,  pellets:1, spread:0.0008, kick:6,
+    cost:1, noise:11, cross:'pistol',  zoom:0.80 },
+  { name:'POSTA ÚNICA',  rate:1.05, dmg:118, range:44,  pellets:1, spread:0.006, kick:30,
+    cost:1, noise:22, cross:'shotgun', perfora:1, zoom:0.90 },
+  { name:'RÁFAGA DE 3',  rate:0.42, dmg:20,  range:70,  pellets:1, spread:0.008, kick:9,
+    cost:1, noise:17, cross:'rifle',   rafaga:3 },
+  { name:'GRANADA CORTA',rate:1.35, cost:1, noise:8, cross:'nade', proj:true, mecha:0.95, fuerza:9.4 }
+];
+const altOf = (i) => Object.assign({}, WEAPONS[i], ALT[i]);
 const magSize = (p, w) => WEAPONS[w].mag ? Math.round(WEAPONS[w].mag * (1 + (p.up ? p.up.maxammo : 0) * 0.35)) : 0;
 const AMMO_LABEL = { bullets:'BALAS', shells:'CARTUCHOS', nades:'GRANADAS' };
 
@@ -1953,6 +1968,7 @@ function initLocal(p) {
   p.fovK = 1;
   p.exhausted = false;
   p.hitMark = 0; p.headMark = 0; p.killMark = 0; p.triggerHeld = false; p.usedCheat = 0;
+  p.altHeld = false; p.burstLeft = 0; p.burstT = 0; p.burstAlt = 0; p.zoomT = 0; p.inBurst = 0;
   p.slideT = 0; p.slideCd = 0; p.slideAX = 0; p.slideAY = 0; p.wasSprint = 0;
   applyUpgradeStats(p);
 }
@@ -2036,8 +2052,8 @@ function revivePlayer(p) {
 }
 
 /* ------------------------------ disparo ------------------------------ */
-function fire(p) {
-  const w = WEAPONS[p.weapon];
+function fire(p, alt) {
+  const w = alt ? altOf(p.weapon) : WEAPONS[p.weapon];
   if (p.cool > 0 || p.switching > 0 || p.down || p.reloadT > 0) return;
   const u = p.up;
   if (w.stamina && !u.freeMelee && p.stam < w.stamina) { Snd.empty(); return; }
@@ -2068,12 +2084,13 @@ function fire(p) {
   }
 
   if (w.proj) {                                          /* granada con fisica */
-    const vz = 3.0;
+    const vz = alt ? 2.4 : 3.0, vel = w.fuerza || 7.2, mecha = w.mecha || 2.2;
     G.projectiles.push({ id:entId++, x:p.x+IN.dirX*0.4, y:p.y+IN.dirY*0.4,
-      vx:IN.dirX*7.2, vy:IN.dirY*7.2, vz, z:0.75, grav:1, dmg:0, r:0.16, spr:'nade',
-      from:'player', owner:p.id, life:9, fuse:2.2, bounces:6, scale:0.30 });
+      vx:IN.dirX*vel, vy:IN.dirY*vel, vz, z:0.75, grav:1, dmg:0, r:0.16, spr:'nade',
+      from:'player', owner:p.id, life:9, fuse:mecha, bounces:6, scale:0.30 });
     Snd.pin(); Snd.throwN();
-    NET.send({ t:'nade', x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY });
+    if (alt) addMsg('MECHA CORTA · ¡CÚBRETE!', '#ff8a5c');
+    NET.send({ t:'nade', x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
     return;
   }
   if (p.weapon !== 0) {                                  /* el fogonazo ilumina la sala */
@@ -2084,11 +2101,16 @@ function fire(p) {
   if (w.cross === 'shotgun') spread *= (1 - u.choke);
   if (w.cross === 'rifle') spread *= (1 + p.recoil*1.1);
   for (let i=0;i<w.pellets;i++) hitscan(p, p.ang + rnd(-spread, spread), w);
+  if (w.zoom) p.zoomT = 0.34;                            /* la mira se cierra un instante */
+  if (w.rafaga && !p.burstLeft && !p.inBurst) {          /* el resto de la rafaga sale sola */
+    p.burstLeft = w.rafaga - 1; p.burstT = 0.065; p.burstAlt = 1;
+  }
   if (p.weapon === 0) Snd.machete();
   else if (p.weapon === 1) Snd.glock();
   else if (p.weapon === 2) Snd.shotgun();
   else Snd.m16();
-  NET.send({ t:'shot', id:p.id, w:p.weapon, x:p.x, y:p.y, a:p.ang });
+  if (alt && p.weapon === 2) Snd.tone(70,0.30,'sawtooth',0.10,26);   /* la posta pega mas grave */
+  NET.send({ t:'shot', id:p.id, w:p.weapon, x:p.x, y:p.y, a:p.ang, alt:alt?1:0 });
 }
 function alertNoise(radius) {
   for (const e of G.enemies) {
@@ -2098,12 +2120,13 @@ function alertNoise(radius) {
     e.losT = 0;
   }
 }
-function hitscan(p, ang, w) {
+function hitscan(p, ang, w, salta, mengua) {
   const dx = Math.cos(ang), dy = Math.sin(ang);
   const wallD = rayWall(p.x, p.y, dx, dy, w.range);
   let best = null, bestT = wallD, bestAlly = null;
   for (const e of G.enemies) {
     if (!e.alive) continue;
+    if (salta && salta.has(e.id)) continue;             /* ya atravesado por esta posta */
     const ex = e.x-p.x, ey = e.y-p.y, t = ex*dx+ey*dy;
     if (t <= 0.05 || t > bestT) continue;
     const px = ex-dx*t, py = ey-dy*t, rr = e.radius*(e.boss?1.2:1.05);
@@ -2153,6 +2176,7 @@ function hitscan(p, ang, w) {
     if (w.pellets > 1 && w.cross === 'shotgun') dmg *= clamp(1 - bestT/(w.range*0.8), 0.3, 1);
     if (p.weapon === 0) dmg *= (1 + u.melee);
     if (p.hp < p.maxhp*0.35) dmg *= (1 + u.lowhp);
+    if (mengua) dmg *= mengua;                          /* pierde fuerza al atravesar */
     let crit = false;
     if (Math.random() < u.crit) { crit = true; dmg *= 2; spawnParts('spark', best.x, best.y, 0.8, 6, 2, 2, 0.4); }
     /* ---- disparo a la cabeza: la mira cae en la franja alta del sprite ---- */
@@ -2167,12 +2191,18 @@ function hitscan(p, ang, w) {
       spawnParts('blood', best.x, best.y, 1.15, 9, 2.2, 2.4, 0.55);
       Snd.head();
     }
+    if (w.aturde && !best.boss) best.stagger = Math.max(best.stagger, 0.55);
     best.hurt(dmg, p.id);
     dmgNumber(best.x, best.y, dmg, crit, head);
     p.hitMark = head ? 0.34 : 0.22;
     p.headMark = head ? 0.34 : (p.headMark||0);
     if (!best.alive) p.killMark = 0.5;
     NET.send({ t:'edmg', id:best.id, dmg });
+    if (w.perfora) {                                    /* la posta sigue de largo */
+      const s2 = salta || new Set();
+      s2.add(best.id);
+      if (s2.size <= w.perfora) hitscan(p, ang, w, s2, (mengua||1)*0.62);
+    }
   } else {
     spawnFX('spark', hx-dx*0.05, hy-dy*0.05, 0.3, 0.2);
     spawnParts('spark', hx-dx*0.08, hy-dy*0.08, 0.55, 4, 1.8, 1.8, 0.4);
@@ -2398,15 +2428,25 @@ function updateLocal(p, dt) {
   } else { p.bob *= Math.max(0, 1-dt*6); p.lastStep = 0; }
   p.moving = len > 0 || p.dashT > 0 || (p.slideT||0) > 0;
   /* el campo de vision se abre al correr y se cierra al agacharse */
-  const fovTarget = (p.slideT||0) > 0 ? 1.20 : (p.dashT > 0 ? 1.16 : (sprinting ? 1.10 : (p.crouching ? 0.95 : 1)));
+  const fovTarget = (p.zoomT||0) > 0 ? (ALT[p.weapon].zoom || 0.86)
+                  : ((p.slideT||0) > 0 ? 1.20 : (p.dashT > 0 ? 1.16 : (sprinting ? 1.10 : (p.crouching ? 0.95 : 1))));
   p.fovK = lerp(p.fovK || 1, fovTarget, clamp(dt*6, 0, 1));
   updateDir(p);
 
   /* ---------- disparo ---------- */
   const w = WEAPONS[p.weapon];
-  const shooting = down('fire');
-  if (shooting && (w.auto || !p.triggerHeld)) fire(p);
-  p.triggerHeld = shooting;
+  if (p.burstLeft > 0) {                                 /* rafaga automatica del M16 */
+    p.burstT -= dt;
+    if (p.burstT <= 0) {
+      p.burstLeft--; p.burstT = 0.065; p.cool = 0;
+      p.inBurst = 1; fire(p, p.burstAlt); p.inBurst = 0;  /* el ultimo tiro no rearma */
+    }
+  }
+  const shooting = down('fire'), alting = down('alt');
+  if (alting && !p.altHeld) fire(p, 1);
+  else if (shooting && (w.auto || !p.triggerHeld) && !alting) fire(p);
+  p.triggerHeld = shooting; p.altHeld = alting;
+  p.zoomT = Math.max(0, (p.zoomT||0) - dt);
 
   /* ---------- recarga manual ---------- */
   if (down('reload') && !p.reloadHeld) startReload(p);
@@ -2864,13 +2904,15 @@ function onNet(from, m) {
       const p = G.players.get(m.id);
       if (p && !p.isLocal) { p.anim = 0.2; p.muzzle = 0.08;
         if (m.w !== 0) addLight(m.x+Math.cos(m.a)*0.45, m.y+Math.sin(m.a)*0.45, m.w===2?8.6:6.4, m.w===2?1.2:0.85, 0.085);
-        if (m.w===2) Snd.shotgun(); else if (m.w===3) Snd.m16(); else if (m.w===1) Snd.glock(); else Snd.machete(); }
+        if (m.w===2) Snd.shotgun(); else if (m.w===3) Snd.m16(); else if (m.w===1) Snd.glock(); else Snd.machete();
+        if (m.alt && m.w===2) Snd.tone(70,0.30,'sawtooth',0.10,26); }
       if (G.isHost) relay(from, m);
       break;
     }
     case 'nade': {
-      if (G.isHost) G.projectiles.push({ id:entId++, x:m.x, y:m.y, vx:m.ax*7.2, vy:m.ay*7.2, vz:3.0, z:0.75,
-        grav:1, dmg:0, r:0.16, spr:'nade', from:'player', owner:from, life:9, fuse:2.2, bounces:6, scale:0.30 });
+      if (G.isHost) { const v = m.v || 7.2;
+        G.projectiles.push({ id:entId++, x:m.x, y:m.y, vx:m.ax*v, vy:m.ay*v, vz:m.f?2.4:3.0, z:0.75,
+        grav:1, dmg:0, r:0.16, spr:'nade', from:'player', owner:from, life:9, fuse:m.f||2.2, bounces:6, scale:0.30 }); }
       break;
     }
     case 'wantNext': if (G.isHost && G.portalOn) nextRoom(); break;
@@ -3237,7 +3279,9 @@ function renderNadeArc() {                              /* vista previa del lanz
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   const invDet = 1/(IN.planeX*IN.dirY - IN.dirX*IN.planeY);
   let x = p.x + IN.dirX*0.4, y = p.y + IN.dirY*0.4, z = 0.75 + (p.z||0);
-  let vx = IN.dirX*7.2, vy = IN.dirY*7.2, vz = 3.0;
+  const altN = down('alt');                             /* la parabola sigue el modo elegido */
+  const velN = altN ? (ALT[4].fuerza || 7.2) : 7.2;
+  let vx = IN.dirX*velN, vy = IN.dirY*velN, vz = altN ? 2.4 : 3.0;
   const dt = 1/30, pts = [];
   for (let i=0;i<44;i++) {
     vz -= 9.5*dt; z += vz*dt;
@@ -3789,14 +3833,19 @@ function renderHUD() {
   x2 += aw + pad;
   const ww = Math.max(150*s, W - x2 - pad);
   panel(x2, top+8*s, ww, barH-16*s);
-  bigText('SALA ' + G.room + ' / ' + TOTAL_ROOMS, x2+ww/2, top+26*s, (17*s)|0, '#9fd0ff');
-  bigText(w.name, x2+ww/2, top+56*s, clamp(ww/(w.name.length*0.62), 12*s, 30*s)|0, '#ffe6a8');
+  bigText('SALA ' + G.room + ' / ' + TOTAL_ROOMS, x2+ww/2, top+21*s, (15*s)|0, '#9fd0ff');
+  bigText(w.name, x2+ww/2, top+43*s, clamp(ww/(w.name.length*0.62), 12*s, 25*s)|0, '#ffe6a8');
+  /* modo alternativo del arma en mano */
+  const alt2 = ALT[p.weapon];
+  if (alt2) bigText(keyName(KEYS.alt) + ' · ' + alt2.name, x2+ww/2, top+60*s,
+                    clamp(ww/((alt2.name.length+10)*0.60), 9*s, 13*s)|0,
+                    (p.zoomT||0) > 0 || p.burstLeft > 0 ? '#ffd45e' : '#93a0ad');
   const slotW = Math.min(38*s, ww/6);
   for (let i=0;i<5;i++) {
     const sx2 = x2+ww/2 - slotW*2.5 + i*slotW;
     ctx.fillStyle = i===p.weapon ? '#ffcf5c' : '#5c5344';
-    ctx.fillRect(sx2+2*s, top+barH-26*s, slotW-4*s, 16*s);
-    bigText(String(i+1), sx2+slotW/2, top+barH-13*s, (13*s)|0, i===p.weapon?'#2a2008':'#c9b48a','center',false);
+    ctx.fillRect(sx2+2*s, top+barH-21*s, slotW-4*s, 14*s);
+    bigText(String(i+1), sx2+slotW/2, top+barH-9*s, (12*s)|0, i===p.weapon?'#2a2008':'#c9b48a','center',false);
   }
   /* ---------------- HUD de equipo (esquina) ---------------- */
   const team = [...G.players.values()].sort((a,b)=>a.order-b.order);
