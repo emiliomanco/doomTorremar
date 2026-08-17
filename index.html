@@ -1148,6 +1148,27 @@ function spawnParts(kind, x, y, z, n, spread, up, life) {
   }
 }
 function spawnFX(kind, x, y, size, life) { G.fx.push({ kind, x, y, size:size||1, t:0, life:life||0.4 }); }
+/* En los clientes los enemigos no ejecutan su IA, asi que hay que
+   avanzarles a mano la interpolacion, el paso y la caida al morir:
+   sin esto un enemigo abatido por otro jugador se quedaba de pie. */
+function updateRemoteEnemies(dt) {
+  for (let i=G.enemies.length-1;i>=0;i--) {
+    const e = G.enemies[i];
+    e.flash = Math.max(0, e.flash - dt);
+    e.anim = Math.max(0, e.anim - dt);
+    if (e.tx !== undefined) {
+      const k = clamp(dt*14, 0, 1);
+      const moved = Math.hypot(e.tx-e.x, e.ty-e.y);
+      e.x = lerp(e.x, e.tx, k); e.y = lerp(e.y, e.ty, k);
+      if (e.alive && moved > 0.015) e.walk += dt * 7;    /* ciclo de paso local */
+    }
+    if (!e.alive) {
+      e.deadT += dt;
+      if (e.deadT > 9) G.enemies.splice(i,1);
+    }
+    if (e.phase2) e.blink += dt;
+  }
+}
 function updateParts(dt) {
   for (let i=G.parts.length-1;i>=0;i--) {
     const p = G.parts[i]; p.life -= dt;
@@ -1220,12 +1241,13 @@ class Enemy {
       const left = b.minions.filter(m => m.alive).length;
       if (left === 0) b.minionDeathT = G.time;          /* arranca la espera de 20 s */
     }
+    const hostSide = G.isHost || !NET.online;
     const drops = this.def.drop || 0;
     const bonus = (me() && me().up ? me().up.drops : 0);
-    if (Math.random() < drops*(1+bonus)) dropItem(this.x, this.y, this.boss||this.mini);
+    if (hostSide && Math.random() < drops*(1+bonus)) dropItem(this.x, this.y, this.boss||this.mini);
     if (this.boss || this.mini) {
       spawnFX('boom', this.x, this.y, 2.2, 0.7); Snd.boom();
-      dropItem(this.x+0.6, this.y, true); dropItem(this.x-0.6, this.y, true);
+      if (hostSide) { dropItem(this.x+0.6, this.y, true); dropItem(this.x-0.6, this.y, true); }
       addMsg('💀 ' + this.def.name + ' HA CAÍDO', '#ff8a5c');
     }
     const p = me();
@@ -1975,6 +1997,7 @@ function serializePlayers() {
 function worldSnapshot() {
   const en = [];
   for (const e of G.enemies) {
+    if (!e.alive && e.deadT > 8) continue;               /* cadaver ya desvanecido */
     en.push([e.id, DEF_LIST.indexOf(e.def.id), Math.round(e.x*50), Math.round(e.y*50),
              Math.round(e.hp/e.maxhp*100), (e.alive?1:0)|(e.anim>0?2:0)|(e.phase2?4:0), Math.round(e.walk)&3]);
   }
@@ -1997,17 +2020,22 @@ function applySnapshot(m) {
       if (!def) continue;
       e = new Enemy(def, x/50, y/50, null); e.id = id; G.enemies.push(e);
     }
-    e.x = x/50; e.y = y/50;
+    e.tx = x/50; e.ty = y/50;
+    if (!e.netInit) { e.x = e.tx; e.y = e.ty; e.netInit = true; }
     e.hp = e.maxhp * hpP/100;
     const wasAlive = e.alive;
     e.alive = !!(flags & 1);
     e.anim = (flags & 2) ? 0.3 : 0;
     e.phase2 = !!(flags & 4);
-    e.walk = wk;
-    if (wasAlive && !e.alive) { e.deadT = 0; spawnParts('blood', e.x, e.y, 0.6, 12, 2.4, 3, 1.1); }
+    if (wasAlive && !e.alive) {                        /* lo mato otro jugador: que se desplome aqui */
+      e.deadT = 0;
+      spawnParts('blood', e.x, e.y, 0.6, 12, 2.4, 3, 1.1);
+      Snd.die();
+    }
     seen.add(id);
   }
-  for (let i=G.enemies.length-1;i>=0;i--) if (!seen.has(G.enemies[i].id) && G.enemies[i].alive) G.enemies.splice(i,1);
+  /* fuera todo lo que el anfitrion ya no envia, vivo o muerto */
+  for (let i=G.enemies.length-1;i>=0;i--) if (!seen.has(G.enemies[i].id)) G.enemies.splice(i,1);
   G.projectiles.length = 0;
   for (const a of m.p) G.projectiles.push({ id:a[0], spr:SPR_LIST[a[1]]||'bullet', x:a[2]/50, y:a[3]/50, z:a[4]/50,
     vx:0, vy:0, dmg:0, r:0.16, from:'enemy', life:9, scale:0.30, remote:true });
@@ -3061,7 +3089,8 @@ function frame(now) {
           if (spot) { e.x = spot.x; e.y = spot.y; }
         }
       }
-    } else if (G.state === 'run') {
+    } else if (G.state === 'run' || G.state === 'pause') {
+      updateRemoteEnemies(dt);                            /* animacion de los enemigos del host */
       updateProjectiles(dt);                              /* solo la granada propia y efectos */
     }
     updateParts(dt);
