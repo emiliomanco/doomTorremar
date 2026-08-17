@@ -237,6 +237,23 @@ const MAX_PLAYERS = 8;
 const TOTAL_ROOMS = 50;
 const BOSS_ROOMS = { 10:'roberto', 20:'arturo', 30:'david', 50:'jorge' };
 const UPGRADE_ROOMS = [5, 15, 25, 35, 45];
+/* condiciones especiales de sala: se sortean con la semilla, asi que
+   todos los jugadores ven la misma */
+const MODIFIERS = [
+  { id:'none',     name:'',                    desc:'' },
+  { id:'blackout', name:'APAGÓN',              desc:'Las luces han caído: apenas ves a distancia', fog:2.4 },
+  { id:'fog',      name:'HUMO DENSO',          desc:'El humo reduce la visibilidad', fog:1.6 },
+  { id:'horde',    name:'HORDA',               desc:'El doble de enemigos, con la mitad de vida', count:2, hp:0.5 },
+  { id:'elite',    name:'GUARDIA DE ÉLITE',    desc:'Todo el que entra aquí viene reforzado', allElite:true, count:0.7 },
+  { id:'swift',    name:'TURNO DOBLE',         desc:'Van acelerados pero aguantan menos', spd:1.4, hp:0.62 },
+  { id:'volatile', name:'ALMACÉN VOLÁTIL',     desc:'Barriles por todas partes', barrels:2.4 }
+];
+function rollModifier(roomNo, seed) {
+  if (roomNo === 0 || BOSS_ROOMS[roomNo] || UPGRADE_ROOMS.includes(roomNo)) return MODIFIERS[0];
+  const R = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  if (R() > 0.34) return MODIFIERS[0];                  /* dos de cada tres salas, normales */
+  return MODIFIERS[1 + ((R() * (MODIFIERS.length-1)) | 0)];
+}
 const SKINS = ['#f7e0c8','#f2d3b3','#e8bd93','#d8a273','#c08553','#a06a3f','#845331','#6b4526','#5f3a20','#422814','#33200f','#241608'];
 const OUTFITS = [
   { id:0, name:'CAMISA BLANCA · PANTALÓN GRIS',      shirt:'#ffffff', pants:'#595959' },
@@ -249,6 +266,22 @@ try {
   if (c) { PREFS.skin = c.skin || null; PREFS.fit = (c.fit === 0 || c.fit === 1) ? c.fit : null; }
 } catch (e) {}
 function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
+/* marcas personales de la partida */
+const BEST = { room:0, kills:0, time:0, runs:0 };
+try {
+  const b = JSON.parse(localStorage.getItem('torremar.best') || 'null');
+  if (b) Object.assign(BEST, b);
+} catch (e) {}
+function saveBest() { try { localStorage.setItem('torremar.best', JSON.stringify(BEST)); } catch (e) {} }
+function recordRun(room, kills, time) {
+  BEST.runs++;
+  let nuevo = false;
+  if (room > BEST.room) { BEST.room = room; nuevo = true; }
+  if (kills > BEST.kills) { BEST.kills = kills; nuevo = true; }
+  if (time > BEST.time) BEST.time = time;
+  saveBest();
+  return nuevo;
+}
 const mySkin = () => PREFS.skin || pick(SKINS);
 const myFit  = () => (PREFS.fit === null ? (Math.random() < 0.5 ? 0 : 1) : PREFS.fit);
 
@@ -1318,7 +1351,7 @@ const G = {
   diff:0, ff:0, nPlayers:1,
   msgs:[], time:0, kills:0, startedAt:0,
   bossRef:null, cineT:0, flowT:0, netT:0, seq:0, over:false, win:false, hitStop:0,
-  dmgNums:[], feed:[], combo:0, comboT:0, decals:[], flick:0, flickT:2
+  dmgNums:[], feed:[], combo:0, comboT:0, decals:[], flick:0, flickT:2, mod:null
 };
 const me = () => G.players.get(G.meId);
 function addMsg(text, col) {
@@ -1834,8 +1867,17 @@ function fire(p) {
   if (w.casing) ejectCasing(p, w.casing);
   if (w.stamina && !u.freeMelee) p.stam = Math.max(0, p.stam - w.stamina);
   alertNoise(w.noise);
-  if (w.cross === 'rifle') p.recoil = Math.min(1, p.recoil + 0.20);
-  else if (w.cross === 'shotgun') p.recoil = Math.min(1, p.recoil + 0.5);
+  if (w.cross === 'rifle') {
+    p.recoil = Math.min(1, p.recoil + 0.20);
+    p.pitch = clamp(p.pitch + 5*view.s*(0.6+p.recoil), -view.v3*0.30, view.v3*0.30);  /* el cañon sube */
+  } else if (w.cross === 'shotgun') {
+    p.recoil = Math.min(1, p.recoil + 0.5);
+    p.shake = Math.min(16, p.shake + 5);
+    p.pitch = clamp(p.pitch + 16*view.s, -view.v3*0.30, view.v3*0.30);
+    moveEnt(p, -IN.dirX*0.14, -IN.dirY*0.14);            /* culatazo hacia atras */
+  } else if (w.cross === 'pistol') {
+    p.pitch = clamp(p.pitch + 6*view.s, -view.v3*0.30, view.v3*0.30);
+  }
 
   if (w.proj) {                                          /* granada con fisica */
     const vz = 3.0;
@@ -2187,10 +2229,11 @@ function spawnProps() {
   G.props.length = 0;
   if (G.room === 0) return;
   const spots = freeCells(MAP.spawn, 4);
-  const n = rndi(5, 11);
+  const mod = G.mod || MODIFIERS[0];
+  const n = Math.round(rndi(5, 11) * (mod.barrels ? 1.5 : 1));
   for (let i=0;i<n && spots.length;i++) {
     const sp = spots.splice((Math.random()*spots.length)|0, 1)[0];
-    const kind = Math.random() < 0.55 ? 'barrel' : 'crate';
+    const kind = Math.random() < (mod.barrels ? 0.85 : 0.55) ? 'barrel' : 'crate';
     const d = PROPS[kind];
     G.props.push({ id:entId++, kind, x:sp.x, y:sp.y, hp:d.hp, maxhp:d.hp, radius:d.radius, flash:0, dead:false });
   }
@@ -2229,7 +2272,8 @@ function spawnRoomEnemies() {
   }
   G.bossRef = null;
   const spots = freeCells(MAP.spawn, 9);
-  const n = roomEnemyCount();                            /* 10-15 en solitario, mas por cada jugador */
+  const mod = G.mod || MODIFIERS[0];
+  const n = Math.max(4, Math.round(roomEnemyCount() * (mod.count || 1)));
   const pool = ['runner','runner','shooter','shooter','brute'];
   if (G.room >= 3) pool.push('tiza','tiza');
   if (G.room >= 5) pool.push('becario','bedel');
@@ -2239,7 +2283,9 @@ function spawnRoomEnemies() {
   for (let i=0;i<n && spots.length;i++) {
     const s = spots.splice((Math.random()*spots.length)|0, 1)[0];
     const en = new Enemy(ENEMIES[pick(pool)], s.x, s.y, null);
-    if (G.room >= 4 && Math.random() < clamp(0.07 + G.room*0.006, 0, 0.24)) makeElite(en);
+    if (mod.hp) { en.maxhp = Math.max(8, Math.round(en.maxhp*mod.hp)); en.hp = en.maxhp; }
+    if (mod.spd) en.speed *= mod.spd;
+    if (mod.allElite || (G.room >= 4 && Math.random() < clamp(0.07 + G.room*0.006, 0, 0.24))) makeElite(en);
     G.enemies.push(en);
   }
   if (G.room >= 3 && Math.random() < 0.22 && spots.length) {   /* minijefe aleatorio */
@@ -2252,11 +2298,12 @@ function spawnRoomEnemies() {
 }
 function startRoom(n, seed) {
   G.room = n; G.seed = seed;
+  G.mod = rollModifier(n, seed);
   genRoom(n, seed);
   G.projectiles.length = 0; G.items.length = 0; G.pools.length = 0;
   G.parts.length = 0; G.fx.length = 0; G.motes.length = 0; G.props.length = 0;
   G.dmgNums.length = 0; G.feed.length = 0; G.combo = 0; G.decals.length = 0;
-  G.roomState = 'fight'; G.portalOn = false; G.exitT = 0;
+  G.roomState = 'fight'; G.portalOn = false; G.exitT = 0; G.modBanner = 0;
   const total = Math.max(1, G.players.size);
   for (const p of G.players.values()) {
     const a = ((p.order-1)/total) * TAU;
@@ -2284,6 +2331,11 @@ function startRoom(n, seed) {
     addMsg('SALA 0 · ZONA SEGURA · ENTRA EN EL CÍRCULO PARA EMPEZAR', '#8ce89b'); }
   else if (bossKey) startCinematic(BOSSES[bossKey].name, 'SALA ' + n);
   else addMsg('SALA ' + n + ' / ' + TOTAL_ROOMS + ' · ' + G.enemies.length + ' ENEMIGOS', '#9fd0ff');
+  if (G.mod && G.mod.id !== 'none') {
+    addMsg('⚠ ' + G.mod.name + ' · ' + G.mod.desc, '#ffb347');
+    G.modBanner = 2.6;
+    Snd.tone(120, 0.6, 'sawtooth', 0.07, 300);
+  }
   Snd.door();
 }
 function startCinematic(name, sub) {
@@ -2311,7 +2363,7 @@ function updateExitCircle(dt) {
 function roomCleared() {
   G.roomState = 'cleared';
   G.cleared++;
-  if (UPGRADE_ROOMS.includes(G.room)) { openUpgrades(); return; }
+  if (UPGRADE_ROOMS.includes(G.room) || BOSS_ROOMS[G.room]) { openUpgrades(); return; }
   G.portalOn = true;
   addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b');
   Snd.door();
@@ -2598,7 +2650,7 @@ function endRunLocal(win) {
 /* =====================================================================
    RENDER
    ===================================================================== */
-let lightK = 1, vignette = null, painVig = null, grainTex = null, hudTex = null;
+let lightK = 1, fogMul = 1, vignette = null, painVig = null, grainTex = null, hudTex = null;
 function camHeight() { const p = me(); return 0.5 + (p ? (p.z||0) : 0); }
 function renderFloorCeiling(horizon) {
   const W = view.w, H = view.v3;
@@ -2619,7 +2671,7 @@ function renderFloorCeiling(horizon) {
     const rowD = (ceiling ? posCeil : posFloor)/pz;
     if (rowD > 40) { data.fill(FOGPIX, off, off+bw); continue; }
     const bank = ceiling ? CTEX : FTEX, idx = ceiling ? MAP.ceilIdx : MAP.floorIdx;
-    const lvl = shadeLevel(rowD*lightK);
+    const lvl = shadeLevel(rowD*lightK*fogMul);
     const far = rowD > 6.5;
     const ts = far?MIPS:TEXS, tm = far?MIPM:TEXM, tsh = far?MIPSH:TEXSH;
     let fx = p.x+rowD*rdx0, fy = p.y+rowD*rdy0;
@@ -2643,6 +2695,7 @@ function renderWorld() {
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   lightK = p.flash > 0 ? clamp(1-p.flash*5, 0.35, 1) : 1;
   if (G.flick > 0) lightK *= 1.35;                     /* bajon de luz momentaneo */
+  fogMul = (G.mod && G.mod.fog) ? G.mod.fog : 1;
   renderFloorCeiling(horizon);
   for (let col=0; col<COLS; col++) {
     const sx = col*COL_W, cameraX = 2*(sx+COL_W*0.5)/W - 1;
@@ -2670,7 +2723,7 @@ function renderWorld() {
     const tx = (wallX*WT)|0;
     const sy0 = ((y0-top)/wallH)*WTH, sy1 = ((y1-top)/wallH)*WTH;
     ctx.drawImage(timg, tx, sy0, 1, Math.max(0.02, sy1-sy0), sx, y0, COL_W, y1-y0);
-    let fa = Math.sqrt(perp*lightK/27);
+    let fa = Math.sqrt(perp*lightK*fogMul/27);
     if (side) fa += 0.17;
     const fi = clamp((fa*64)|0, 0, 64);
     if (fi > 0) { ctx.fillStyle = FOGA[fi]; ctx.fillRect(sx, y0, COL_W, y1-y0); }
@@ -2823,7 +2876,7 @@ function renderSprites() {
     let vis = false;
     for (let c=c0;c<=c1;c++) if (zbuf[c] >= ty) { vis = true; break; }
     if (!vis) continue;
-    const fog = clamp((ty*lightK-3)/22, 0, 0.72);
+    const fog = clamp((ty*lightK*fogMul-3)/22, 0, 0.72);
     const tex = s.raw ? s.tex : tinted(s.tex, fog, s.flash||0);
     const tw = s.tex.width, th = s.tex.height;
     if (s.alpha !== undefined) ctx.globalAlpha = clamp(s.alpha, 0, 1);
@@ -3421,6 +3474,13 @@ function renderHUD() {
   if (down('map')) renderMinimap();
   /* ---------------- avisos ---------------- */
   ctx.textAlign='center';
+  if (G.modBanner > 0 && G.mod && G.mod.id !== 'none') {
+    G.modBanner -= 1/60;
+    ctx.globalAlpha = clamp(G.modBanner, 0, 1);
+    bigText('⚠ ' + G.mod.name, W/2, view.v3*0.17, (40*s)|0, '#ffb347');
+    bigText(G.mod.desc, W/2, view.v3*0.17 + 26*s, (17*s)|0, '#e8ddc0');
+    ctx.globalAlpha = 1;
+  }
   if (p.down) {
     bigText('ABATIDO', W/2, view.v3*0.42, (58*s)|0, '#ff3b30');
     bigText('UN COMPAÑERO DEBE QUEDARSE SOBRE TI 4 SEGUNDOS', W/2, view.v3*0.42+34*s, (18*s)|0, '#ffc9c9');
@@ -3626,7 +3686,9 @@ function openUpgrades() {
   for (let i=0;i<3 && bag.length;i++) opts.push(bag.splice((Math.random()*bag.length)|0,1)[0]);
   const box = $('upg-cards');
   box.innerHTML = '';
-  $('upg-title').textContent = 'SALA ' + G.room + ' · ELIGE UNA MEJORA';
+  $('upg-title').textContent = BOSS_ROOMS[G.room]
+    ? 'BOTÍN DE JEFE · ELIGE UNA MEJORA'
+    : 'SALA ' + G.room + ' · ELIGE UNA MEJORA';
   for (const u of opts) {
     const card = document.createElement('div');
     card.className = 'card';
@@ -3648,6 +3710,7 @@ function openUpgrades() {
 }
 function showEnd(win) {
   const p = me();
+  const nuevoRecord = recordRun(G.room, G.kills, G.time);
   $('end-title').textContent = win ? '¡RUN COMPLETADA!' : 'RUN TERMINADA';
   $('end-title').style.color = win ? '#7ee081' : '#d92b2b';
   const mins = Math.floor((G.time)/60), secs = Math.floor(G.time%60);
@@ -3655,7 +3718,10 @@ function showEnd(win) {
     '<h2>SALA ' + G.room + ' / ' + TOTAL_ROOMS + '</h2>' +
     '<div class="muted">BAJAS: ' + G.kills + '</div>' +
     '<div class="muted">TIEMPO: ' + mins + ':' + String(secs).padStart(2,'0') + '</div>' +
-    '<div class="muted">MEJORAS: ' + (p && p.up.taken.length ? p.up.taken.length : 0) + ' (se pierden al morir)</div>';
+    '<div class="muted">MEJORAS: ' + (p && p.up.taken.length ? p.up.taken.length : 0) + ' (se pierden al morir)</div>' +
+    (nuevoRecord ? '<div style="color:#ffd45e;margin-top:6px">★ NUEVO RÉCORD PERSONAL</div>' : '') +
+    '<div class="muted" style="margin-top:8px">MEJOR MARCA: sala ' + BEST.room + ' · ' + BEST.kills +
+    ' bajas · ' + BEST.runs + ' runs jugadas</div>';
   showScreen('scr-end');
 }
 let keysReturn = 'scr-main';
@@ -3906,6 +3972,14 @@ buildWallTextures();
 buildFloorTextures();
 genRoom(1, 12345);
 resize();
+if (BEST.runs) {
+  const rec = document.createElement('div');
+  rec.className = 'muted';
+  rec.innerHTML = '★ MEJOR MARCA: sala ' + BEST.room + ' de ' + TOTAL_ROOMS + ' · ' + BEST.kills +
+                  ' bajas · ' + BEST.runs + ' runs';
+  rec.style.color = '#ffd45e';
+  $('scr-main').appendChild(rec);
+}
 $('net-state').textContent = NET.available
   ? 'Red: PeerJS lista · crea o únete a una sala'
   : 'Red: PeerJS no disponible (sin conexión) · el modo solitario funciona igual';
