@@ -79,6 +79,7 @@
       <button id="btn-char">PERSONAJE</button>
       <button id="btn-keys">OPCIONES DE CONTROL</button>
     </div>
+    <div class="row"><span class="muted">DIFICULTAD</span><select id="sel-solo-diff"></select></div>
     <div class="row"><button id="btn-solo" class="go">JUGAR EN SOLITARIO</button></div>
     <div class="muted" id="net-state">Red: comprobando…</div>
   </div>
@@ -136,7 +137,7 @@
     <div class="plist" id="lobby-list"></div>
     <div class="row" id="host-controls">
       <span class="muted">DIFICULTAD</span>
-      <select id="sel-diff"><option value="0">Normal</option><option value="1">Difícil</option><option value="2">Souls-like</option></select>
+      <select id="sel-diff"></select>
       <span class="muted">FUEGO AMIGO</span>
       <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select>
       <button id="btn-start" class="go">START RUN</button>
@@ -229,11 +230,20 @@ function emojiTxt(c, txt, x, y, size) { c.font = size + 'px ' + EMOJI; c.fillTex
 
 /* --------------------------- configuracion --------------------------- */
 const DIFFS = [
-  { name:'NORMAL',     hp:1.00, dmg:1.00, spd:1.00 },
-  { name:'DIFÍCIL',    hp:1.45, dmg:1.35, spd:1.12 },
-  { name:'SOULS-LIKE', hp:2.10, dmg:1.85, spd:1.25 }
+  { name:'PUTITA',     hp:0.42, dmg:0.32, spd:0.80, count:0.50 },
+  { name:'FÁCIL',      hp:0.70, dmg:0.58, spd:0.92, count:0.72 },
+  { name:'NORMAL',     hp:1.00, dmg:1.00, spd:1.00, count:1.00 },
+  { name:'DIFÍCIL',    hp:1.45, dmg:1.35, spd:1.12, count:1.15 },
+  { name:'SOULS-LIKE', hp:2.10, dmg:1.85, spd:1.25, count:1.30 },
+  { name:'IMPOSIBLE',  hp:3.20, dmg:2.70, spd:1.42, count:1.60, gated:true }
 ];
+const DIFF_NORMAL = 2, DIFF_IMPOSIBLE = 5;
+/* en IMPOSIBLE el arsenal se gana matando jefes */
+const WEAPON_LOCKS = { roberto:4, arturo:2, david:3 };
 const MAX_PLAYERS = 8;
+const SUMMON_WAIT = 10;                                 /* segundos antes de volver a invocar */
+/* La estamina solo la gasta el dash: con la barra llena salen 3 seguidos. */
+const STAM_MAX = 45, DASH_COST = 15, STAM_REGEN = 34;
 const TOTAL_ROOMS = 50;
 const BOSS_ROOMS = { 10:'roberto', 20:'arturo', 30:'david', 50:'jorge' };
 const UPGRADE_ROOMS = [5, 15, 25, 35, 45];
@@ -366,7 +376,7 @@ function keyName(code) {
 
 /* ------------------------------ armas -------------------------------- */
 const WEAPONS = [
-  { id:0, key:'MACHETE',   name:'MACHETE',       ammo:null,      cost:0, rate:0.42, dmg:52, range:1.9,  pellets:3, spread:0.20, kick:14, noise:4,  auto:false, stamina:14, cross:'melee' },
+  { id:0, key:'MACHETE',   name:'MACHETE',       ammo:null,      cost:0, rate:0.42, dmg:52, range:1.9,  pellets:3, spread:0.20, kick:14, noise:4,  auto:false, cross:'melee' },
   { id:1, key:'GLOCK',     name:'GLOCK 19',      ammo:'bullets', cost:1, rate:0.26, dmg:25, range:70,   pellets:1, spread:0.012, kick:8, noise:12, auto:false, cross:'pistol', mag:15, reload:1.25, casing:'brass' },
   { id:2, key:'REMINGTON', name:'REMINGTON 870', ammo:'shells',  cost:1, rate:0.85, dmg:26, range:26,   pellets:5, spread:0.155, kick:22, noise:20, auto:false, cross:'shotgun', mag:6, reload:2.30, casing:'shell' },
   { id:3, key:'M16',       name:'M16',           ammo:'bullets', cost:1, rate:0.095, dmg:17, range:70,  pellets:1, spread:0.016, kick:6, noise:16, auto:true,  cross:'rifle', mag:30, reload:1.95, casing:'brass' },
@@ -376,7 +386,7 @@ const WEAPONS = [
    el resto se hereda del arma base. */
 const ALT = [
   { name:'TAJO PESADO',  rate:0.86, dmg:88,  range:2.25, pellets:4, spread:0.34, kick:22,
-    stamina:26, noise:7,  cross:'melee',   aturde:1 },
+    noise:7,  cross:'melee',   aturde:1 },
   { name:'TIRO AFINADO', rate:0.46, dmg:38,  range:82,  pellets:1, spread:0.0008, kick:6,
     cost:1, noise:11, cross:'pistol',  zoom:0.80 },
   { name:'POSTA ÚNICA',  rate:1.05, dmg:118, range:44,  pellets:1, spread:0.006, kick:30,
@@ -403,19 +413,19 @@ const UPGRADES = [
   { id:'nade',     ico:'🧨', name:'CARGA EXTRA',        desc:'+45% de radio de explosión.',              apply:u=>u.nadeRadius+=0.45 },
   { id:'armor',    ico:'🛡️', name:'PETO REGLAMENTARIO', desc:'Empiezas cada sala con +30 de armadura.',  apply:u=>u.armor+=30 },
   { id:'iframes',  ico:'💨', name:'REFLEJOS',           desc:'+70% de invulnerabilidad al esquivar.',    apply:u=>u.iframes+=0.70 },
-  { id:'stamina',  ico:'🫁', name:'PULMONES',           desc:'+40 de estamina máxima.',                  apply:u=>u.stamina+=40 },
+  { id:'stamina',  ico:'🫁', name:'PULMONES',           desc:'+30 de estamina: dos esquivas más.',       apply:u=>u.stamina+=30 },
   { id:'rate',     ico:'⚡', name:'GATILLO NERVIOSO',   desc:'+22% de cadencia de fuego.',               apply:u=>u.rate+=0.22 },
   { id:'lifesteal',ico:'🧛', name:'SANGUIJUELA',        desc:'Recuperas 4 de vida por muerte.',          apply:u=>u.lifesteal+=4 },
   { id:'poison',   ico:'🧪', name:'ESTÓMAGO DE HIERRO', desc:'-60% de daño por veneno.',                 apply:u=>u.poisonRes+=0.60 },
   { id:'dashload', ico:'🔫', name:'RECARGA TÁCTICA',    desc:'Esquivar te devuelve munición del arma.',  apply:u=>u.dashReload=true },
   { id:'cheat',    ico:'💀', name:'ENGAÑA A LA MUERTE', desc:'Sobrevives un golpe letal con 1 PV (1 vez).', apply:u=>u.cheatDeath+=1 },
   { id:'drops',    ico:'📦', name:'CARROÑERO',          desc:'Los enemigos sueltan mucha más munición.', apply:u=>u.drops+=0.55 },
-  { id:'freemelee',ico:'♾️', name:'BRAZO INCANSABLE',   desc:'El machete no consume estamina.',          apply:u=>u.freeMelee=true }
+  { id:'dashcd',   ico:'♾️', name:'PIERNAS FRESCAS',    desc:'La esquiva se recupera un 45% antes.',     apply:u=>u.dashCd+=0.45 }
 ];
 function newUpgradeState() {
   return { speed:0, maxhp:0, maxammo:0, swap:0, melee:0, choke:0, canteen:0, canteenCharges:0,
            crit:0, lowhp:0, nadeRadius:0, armor:0, iframes:0, stamina:0, rate:0, lifesteal:0,
-           poisonRes:0, dashReload:false, cheatDeath:0, drops:0, freeMelee:false, taken:[] };
+           poisonRes:0, dashReload:false, cheatDeath:0, drops:0, dashCd:0, taken:[] };
 }
 /* ------------------------------ lienzo ------------------------------- */
 const cv = $('game');
@@ -1007,6 +1017,7 @@ function figure(c, W, H, o) {
   /* torso */
   roundRect(c, cx-shW/2, bodyTop, shW, torsoH, shW*0.16, o.shirt);
   if (o.vest) { c.fillStyle=o.vest; c.fillRect(cx-shW*0.28, bodyTop, shW*0.56, torsoH*0.72); }
+  if (o.crest) crestTorremar(c, cx - shW*0.26, bodyTop + torsoH*0.16, shW*0.26);
   /* brazos */
   const armW = shW*0.20, armLen = torsoH*0.84, shoulderY = bodyTop+torsoH*0.12;
   const arm = (sx,ang) => {
@@ -1175,20 +1186,21 @@ const MINIBOSSES = {
 const BOSSES = {
   roberto:{ id:'roberto', name:'ROBERTO', boss:true, room:10, hp:1500, speed:2.2, radius:0.55,
     scaleX:1.20, scaleY:1.15, dmg:24, cd:2.0, sight:40, score:5000, tex:{w:190,h:200},
-    attack:'charge', chargeEvery:3.4, chargeTime:1.1, chargeMul:4.2, quad:true,
+    attack:'charge', chargeEvery:2.2, chargeTime:1.25, chargeMul:4.6, chargeMin:4.2, prefer:8.0, quad:true,
     look:{ shirt:'#2b6f4e', pants:'#26313f', hair:'#4a3524', headRatio:0.26, glasses:true, headEmoji:'🤓', angry:true, shoulders:0.66 } },
   arturo: { id:'arturo', name:'ARTURO', boss:true, room:20, hp:2100, speed:2.4, radius:0.40,
     scaleX:0.60, scaleY:0.56, dmg:26, cd:0.9, sight:40, score:7000, tex:{w:128,h:208},
-    attack:'dash', dashEvery:3.2, dashTime:0.5, dashMul:5, summon:'franklin', summonN:2, summonMax:4,
+    attack:'dash', dashEvery:2.8, dashTime:0.55, dashMul:5, chargeMin:3.4, prefer:6.0,
+    summon:'franklin', summonN:2, summonMax:4,
     look:{ skin:'#4a2c1a', shirt:'#c9a227', pants:'#2c2016', hair:'#120c08', headRatio:0.32, angry:true, shout:true, emoji:'💢' } },
   david:  { id:'david', name:'DAVID', boss:true, room:30, hp:2800, speed:1.5, radius:0.50,
     scaleX:0.95, scaleY:1.12, dmg:20, cd:1.7, projSpeed:6.4, sight:40, score:9000, tex:{w:180,h:216},
-    attack:'poison',
+    attack:'poison', prefer:9.0,
     look:{ shirt:'#5b3fa0', pants:'#2b2440', hair:'#3b3b3b', headRatio:0.68, headWide:1.0, bald:true,
            glasses:true, glassCol:'#101010', shoulders:0.52, angry:true, headEmoji:'👓' } },
   jorge:  { id:'jorge', name:'JORGE CORONEL', boss:true, room:50, hp:6200, speed:1.7, radius:0.58,
     scaleX:1.00, scaleY:2.30, dmg:20, cd:2.5, projSpeed:4.8, sight:44, score:25000, tex:{w:150,h:300},
-    attack:'hell', summon:'mixed', summonN:3, summonMax:6,
+    attack:'hell', prefer:10.0, summon:'mixed', summonN:3, summonMax:6,
     look:{ shirt:'#1b1b22', pants:'#101015', hair:'#0d0d0d', headRatio:0.20, old:true, angry:true,
            shoulders:0.62, emoji:'🎯' } }
 };
@@ -1206,6 +1218,42 @@ function drawQuad(c, W, H) {                        /* cuadrón de Roberto */
   }
   c.fillStyle='#d8d8dc'; c.fillRect(W*0.30, y+H*0.03, W*0.40, 3);
   c.fillStyle='#f0d060'; c.fillRect(W*0.14, y+H*0.02, W*0.08, H*0.05);
+}
+/* Escudo del colegio Torremar: torre sobre el mar, nada mas. Se dibuja
+   sobre el pecho de la camisa del uniforme. */
+function crestTorremar(c, x, y, w) {
+  const h = w*1.22;
+  c.save();
+  c.beginPath();                                        /* silueta de escudo */
+  c.moveTo(x, y);
+  c.lineTo(x+w, y);
+  c.lineTo(x+w, y+h*0.58);
+  c.quadraticCurveTo(x+w, y+h*0.92, x+w/2, y+h);
+  c.quadraticCurveTo(x, y+h*0.92, x, y+h*0.58);
+  c.closePath();
+  c.fillStyle = '#0b1c46'; c.fill();
+  c.lineWidth = Math.max(0.8, w*0.09); c.strokeStyle = '#d8b64a'; c.stroke();
+  c.save(); c.clip();
+  c.fillStyle = '#1d4f86';                              /* mar */
+  c.fillRect(x, y+h*0.60, w, h*0.40);
+  c.strokeStyle = '#cfe4f5'; c.lineWidth = Math.max(0.6, w*0.055);
+  for (let i=0;i<2;i++) {
+    const yy = y + h*(0.68 + i*0.13);
+    c.beginPath();
+    c.moveTo(x+w*0.08, yy);
+    c.quadraticCurveTo(x+w*0.32, yy-h*0.05, x+w*0.54, yy);
+    c.quadraticCurveTo(x+w*0.76, yy+h*0.05, x+w*0.94, yy);
+    c.stroke();
+  }
+  c.fillStyle = '#e8d79a';                              /* torre */
+  c.fillRect(x+w*0.38, y+h*0.22, w*0.24, h*0.40);
+  c.fillRect(x+w*0.33, y+h*0.18, w*0.34, h*0.07);
+  c.fillStyle = '#0b1c46';
+  for (let i=0;i<3;i++) c.fillRect(x+w*(0.36+i*0.11), y+h*0.18, w*0.05, h*0.07);
+  c.fillStyle = '#8d6b1e';
+  c.fillRect(x+w*0.45, y+h*0.36, w*0.10, h*0.16);
+  c.restore();
+  c.restore();
 }
 function spriteOf(def, state, frame, vr) {
   frame = frame||0; vr = vr||0;
@@ -1233,7 +1281,7 @@ function playerSprite(skin, fit, weaponKey, state, frame, down) {
     if (down) { corpse(c,W,H,{shirt:o.shirt, skin:skin}); return; }
     figure(c,W,H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:'#2a1f18',
       headRatio:0.26, shoulders:0.66, swing: state==='walk'?SWING[frame&3]:0,
-      attack: state==='attack', weapon: weaponKey });
+      attack: state==='attack', weapon: weaponKey, crest:true });
   });
 }
 
@@ -1422,7 +1470,7 @@ const G = {
   players:new Map(),            // id -> jugador (incluido el local)
   meId:'', hostId:'', isHost:false,
   enemies:[], projectiles:[], items:[], pools:[], parts:[], fx:[], motes:[], props:[],
-  diff:0, ff:0, nPlayers:1,
+  diff:2, ff:0, nPlayers:1,
   msgs:[], time:0, kills:0, startedAt:0,
   bossRef:null, cineT:0, flowT:0, netT:0, seq:0, over:false, win:false, hitStop:0,
   dmgNums:[], feed:[], combo:0, comboT:0, decals:[], holes:[], flick:0, flickT:2, mod:null,
@@ -1434,7 +1482,7 @@ function addMsg(text, col) {
   if (G.msgs.length > 5) G.msgs.shift();
 }
 function diffScale(isBoss) {                            /* dificultad base x nº de jugadores */
-  const d = DIFFS[G.diff] || DIFFS[0];
+  const d = DIFFS[G.diff] || DIFFS[DIFF_NORMAL];
   const n = clamp(G.nPlayers || 1, 1, MAX_PLAYERS);
   const extra = n - 1;
   /* los enemigos rasos escalan con la sala; los jefes ya vienen medidos */
@@ -1449,8 +1497,9 @@ function diffScale(isBoss) {                            /* dificultad base x nº
 }
 /* cuantos enemigos por sala: la base sube con cada jugador conectado */
 function roomEnemyCount() {
+  const dc = (DIFFS[G.diff] || DIFFS[DIFF_NORMAL]).count || 1;
   const n = clamp(G.nPlayers || 1, 1, MAX_PLAYERS);
-  return Math.min(46, rndi(10, 15) + Math.round((n-1) * 2.6));
+  return Math.max(4, Math.min(46, Math.round((rndi(10, 15) + (n-1)*2.6) * dc)));
 }
 
 /* ------------------------------ jugador ------------------------------ */
@@ -1678,13 +1727,14 @@ class Enemy {
     this.burst = 0; this.burstT = 0; this.aiming = 0; this.stagger = 0; this.gib = false;
     this.tele = 0; this.teleKind = null; this.owner = ownerBoss||null;
     this.knock = 0; this.knockX = 0; this.knockY = 0;
+    this.backoff = 0; this.orbT = 0; this.orbitDir = Math.random() < 0.5 ? 1 : -1;
   }
   hurt(amount, byId) {
     if (!this.alive) return;
     if (this.def.armor) amount *= (1 - this.def.armor);   /* escudo */
     /* un impacto fuerte interrumpe: los rasos se tambalean, los jefes no */
     if (!this.boss && amount > this.maxhp*0.20) this.stagger = this.mini ? 0.18 : 0.34;
-    this.hp -= amount; this.flash = 0.16;
+    this.hp -= amount; this.flash = 0.16; this.lastHitBy = byId;
     /* un golpe muy por encima de lo que le quedaba lo revienta */
     if (!this.boss && this.hp <= -this.maxhp*0.22) this.gib = true;
     spawnParts('blood', this.x, this.y, 0.55, this.boss?9:5, 1.6, 2.2, 0.8);
@@ -1724,13 +1774,18 @@ class Enemy {
     if (hostSide && Math.random() < drops*(1+bonus)*(this.elite?1.6:1))
       dropItem(this.x, this.y, this.boss||this.mini||this.elite);
     if (hostSide && this.elite && Math.random() < 0.5) dropItem(this.x+0.4, this.y, true);
+    if (this.boss && WEAPON_LOCKS[this.def.id] !== undefined) {
+      unlockWeapon(WEAPON_LOCKS[this.def.id], this.def.name);
+      if (G.isHost) NET.send({ t:'unlock', w:WEAPON_LOCKS[this.def.id], name:this.def.name });
+    }
     if (this.boss || this.mini) {
       spawnFX('boom', this.x, this.y, 2.2, 0.7); Snd.boom();
       if (hostSide) { dropItem(this.x+0.6, this.y, true); dropItem(this.x-0.6, this.y, true); }
       addMsg('💀 ' + this.def.name + ' HA CAÍDO', '#ff8a5c');
     }
     const p = me();
-    if (p && p.up && p.up.lifesteal && !p.down) p.hp = Math.min(p.maxhp, p.hp + p.up.lifesteal);
+    if (p && p.up && p.up.lifesteal && !p.down && (!NET.online || this.lastHitBy === G.meId))
+      p.hp = Math.min(p.maxhp, p.hp + p.up.lifesteal);   /* solo cura a quien remata */
   }
   nearestPlayer() {
     let best = null, bd = 1e9;
@@ -1754,7 +1809,7 @@ class Enemy {
     const alive = this.minions.filter(m => m.alive).length;
     if (alive > 0) return false;
     if (!this.summonedOnce) return true;
-    return (G.time - this.minionDeathT) >= 20;          /* exactamente 20 s tras la ultima muerte */
+    return (G.time - this.minionDeathT) >= SUMMON_WAIT;  /* espera exacta tras la ultima muerte */
   }
   doSummon() {
     const def = this.def;
@@ -1805,9 +1860,12 @@ class Enemy {
     }
     if (def.attack === 'charge' || def.attack === 'dash') {
       this.dashT -= dt;
-      if (this.dashing > 0) { this.dashing -= dt; speed = this.speed * (def.chargeMul||def.dashMul);
+      if (this.dashing > 0) {
+        this.dashing -= dt; speed = this.speed * (def.chargeMul||def.dashMul);
+        if (this.dashing <= 0) this.backoff = 1.35;     /* tras la embestida se separa */
         if (Math.random() < dt*22) spawnParts('dust', this.x, this.y, 0.1, 1, 0.5, 0.5, 0.4);
-      } else if (this.dashT <= 0 && this.los && this.tele <= 0) {
+      } else if (this.dashT <= 0 && this.los && this.tele <= 0
+                 && (this.backoff||0) <= 0 && d > (def.chargeMin || 2.6)) {
         this.dashT = (def.chargeEvery||def.dashEvery) * rate;
         this.tele = 0.42; this.teleKind = 'charge';     /* avisa antes de embestir */
         this.anim = 0.42;
@@ -1891,7 +1949,22 @@ class Enemy {
 
     /* --------- desplazamiento --------- */
     let mvA = toA, move = true;
-    if (!this.los) { const fa = flowAngle(this, t); if (fa !== null) mvA = fa; }
+    if ((this.boss || this.mini) && this.los) {
+      /* Un jefe no camina hacia ti sin parar: se planta para telegrafiar,
+         embiste, y entre ataque y ataque ronda a su distancia preferida. */
+      this.orbT = (this.orbT || 0) - dt;
+      if (this.orbT <= 0) { this.orbT = 2 + Math.random()*2.5; this.orbitDir = Math.random() < 0.5 ? 1 : -1; }
+      const pref = def.prefer || (def.kind === 'ranged' ? 8.5 : 6.5);
+      if (this.dashing > 0) { mvA = toA; move = true; }        /* durante la embestida, a por el */
+      else if (this.tele > 0) { move = false; }                /* plantado antes de soltar */
+      else if ((this.backoff || 0) > 0) {                      /* toma distancia para la siguiente */
+        this.backoff -= dt; mvA = toA + Math.PI; move = true; speed *= 1.55;
+      }
+      else if (d < pref*0.62) { mvA = toA + Math.PI; move = true; }
+      else if (d > pref*1.55) { mvA = toA; move = true; }
+      else { mvA = toA + Math.PI/2*(this.orbitDir || 1); move = true; speed *= 0.72; }
+    }
+    else if (!this.los) { const fa = flowAngle(this, t); if (fa !== null) mvA = fa; }   /* sin vision, por el mapa */
     else if (def.kind === 'ranged' && !this.boss && !this.mini) {
       if (this.hp < this.maxhp*0.3 && d < def.keepMax) mvA = toA + Math.PI;   /* se repliega herido */
       else if (d < def.keepMin) mvA = toA + Math.PI;
@@ -1954,11 +2027,12 @@ function initLocal(p) {
   p.isLocal = true;
   p.up = newUpgradeState();
   p.maxhp = 100; p.hp = 100; p.armor = 0;
-  p.maxStam = 100; p.stam = 100;
+  p.maxStam = STAM_MAX; p.stam = STAM_MAX;
   p.canteen = 3; p.canteenMax = 3;
   p.ammo = { bullets:180, shells:24, nades:3 };
   p.maxAmmo = { bullets:300, shells:60, nades:8 };
   p.weapon = 1; p.cool = 0; p.switching = 0; p.nextW = -1;
+  resetArsenal(p);
   p.mags = [0,0,0,0,0]; p.reloadT = 0; p.reloadMax = 0;
   for (let i=0;i<5;i++) if (WEAPONS[i].mag) { p.mags[i] = magSize(p, i); p.ammo[WEAPONS[i].ammo] -= p.mags[i]; }
   p.kick = 0; p.flash = 0; p.pain = 0; p.shake = 0; p.recoil = 0;
@@ -1975,7 +2049,7 @@ function initLocal(p) {
 function applyUpgradeStats(p) {
   const u = p.up;
   p.maxhp = 100 + u.maxhp;
-  p.maxStam = 100 + u.stamina;
+  p.maxStam = STAM_MAX + u.stamina;
   p.canteenMax = 3 + u.canteenCharges;
   p.maxAmmo = { bullets: Math.round(300*(1+u.maxammo)), shells: Math.round(60*(1+u.maxammo)), nades: 8 + Math.round(4*u.maxammo) };
   p.speedMul = 1 + u.speed;
@@ -1987,8 +2061,27 @@ function updateDir(p) {
 }
 function ammoOf(p, w) { const def = WEAPONS[w]; return def.ammo ? p.ammo[def.ammo] : Infinity; }
 
+/* en IMPOSIBLE se empieza con machete y Glock; el resto lo sueltan los jefes */
+function resetArsenal(p) {
+  p.unlocked = (G.diff === DIFF_IMPOSIBLE) ? [1,1,0,0,0] : [1,1,1,1,1];
+}
+function unlockWeapon(i, bossName) {
+  let algo = false;
+  for (const p of G.players.values()) {
+    if (!p.unlocked) resetArsenal(p);
+    if (!p.unlocked[i]) { p.unlocked[i] = 1; algo = true; }
+  }
+  if (!algo) return;
+  addMsg('🔓 ' + WEAPONS[i].name + ' DESBLOQUEADA' + (bossName ? ' · ' + bossName : ''), '#8ce89b');
+  killFeed('🔓 ' + WEAPONS[i].name, '#8ce89b');
+  Snd.pick();
+}
 function selectWeapon(p, i) {
   if (i === p.weapon || i < 0 || i > 4 || p.down) return;
+  if (p.unlocked && !p.unlocked[i]) {
+    addMsg('ARMA BLOQUEADA · DERROTA AL JEFE QUE LA GUARDA', '#ff8a7a');
+    Snd.empty(); return;
+  }
   p.nextW = i; p.switching = 0.001; p.reloadT = 0; Snd.swap();
 }
 function startReload(p) {
@@ -2056,7 +2149,7 @@ function fire(p, alt) {
   const w = alt ? altOf(p.weapon) : WEAPONS[p.weapon];
   if (p.cool > 0 || p.switching > 0 || p.down || p.reloadT > 0) return;
   const u = p.up;
-  if (w.stamina && !u.freeMelee && p.stam < w.stamina) { Snd.empty(); return; }
+
   if (w.mag) {                                          /* arma con cargador */
     if (p.mags[p.weapon] < w.cost) {
       if (p.ammo[w.ammo] > 0) startReload(p);
@@ -2069,7 +2162,7 @@ function fire(p, alt) {
   if (w.mag) p.mags[p.weapon] -= w.cost;
   else if (w.ammo) p.ammo[w.ammo] -= w.cost;
   if (w.casing) ejectCasing(p, w.casing);
-  if (w.stamina && !u.freeMelee) p.stam = Math.max(0, p.stam - w.stamina);
+
   alertNoise(w.noise);
   if (w.cross === 'rifle') {
     p.recoil = Math.min(1, p.recoil + 0.20);
@@ -2197,7 +2290,7 @@ function hitscan(p, ang, w, salta, mengua) {
     p.hitMark = head ? 0.34 : 0.22;
     p.headMark = head ? 0.34 : (p.headMark||0);
     if (!best.alive) p.killMark = 0.5;
-    NET.send({ t:'edmg', id:best.id, dmg });
+    NET.send({ t:'edmg', id:best.id, dmg, by:p.id });
     if (w.perfora) {                                    /* la posta sigue de largo */
       const s2 = salta || new Set();
       s2.add(best.id);
@@ -2353,9 +2446,8 @@ function updateLocal(p, dt) {
   p.crouching = (down('crouch') || (p.slideT||0) > 0) && p.onGround;
   p.radius = p.crouching ? 0.19 : 0.28;                 /* hitbox mas pequena agachado */
   const groundZ = (p.slideT||0) > 0 ? -0.30 : (p.crouching ? -0.20 : 0);
-  if (down('jump') && p.onGround && p.jumpCd <= 0 && p.stam >= 8 && !p.exhausted) {
+  if (down('jump') && p.onGround && p.jumpCd <= 0) {
     p.vz = 3.3; p.onGround = false; p.jumpCd = 0.28;
-    p.stam = Math.max(0, p.stam - 8); p.stamRegen = 0.5;
     spawnParts('dust', p.x, p.y, 0.06, 4, 0.8, 0.5, 0.35);
     Snd.tone(180, 0.10, 'sine', 0.05, 320);
   }
@@ -2374,13 +2466,12 @@ function updateLocal(p, dt) {
   const rx = IN.planeX/plen, ry = IN.planeY/plen;
   let mx = IN.dirX*fw + rx*st, my = IN.dirY*fw + ry*st;
   const len = Math.hypot(mx,my);
-  if (p.stam <= 0.5) p.exhausted = true;
-  if (p.exhausted && p.stam > p.maxStam*0.32) p.exhausted = false;
-  const sprinting = down('sprint') && len>0 && !p.exhausted && p.stam > 1 && !p.crouching;
+  p.exhausted = p.stam < DASH_COST;                      /* solo indica que no puedes esquivar */
+  const sprinting = down('sprint') && len>0 && !p.crouching;
   /* ---------- deslizamiento: correr + agacharse ---------- */
   if (down('crouch') && down('sprint') && len > 0 && p.onGround && (p.slideT||0) <= 0
-      && p.slideCd <= 0 && !p.exhausted && p.stam >= 12 && (p.wasSprint||0) > 0.18) {
-    p.slideT = 0.46; p.slideCd = 1.5; p.stam = Math.max(0, p.stam-12); p.stamRegen = 0.6;
+      && p.slideCd <= 0 && (p.wasSprint||0) > 0.18) {
+    p.slideT = 0.46; p.slideCd = 1.5;
     p.slideAX = mx/len; p.slideAY = my/len;
     spawnParts('dust', p.x, p.y, 0.06, 12, 1.5, 0.5, 0.7);
     Snd.slide(); p.shake = Math.min(10, p.shake + 4);
@@ -2388,12 +2479,13 @@ function updateLocal(p, dt) {
   p.wasSprint = sprinting ? (p.wasSprint||0) + dt : 0;
   let speed = 3.4 * p.speedMul * (sprinting?1.55:1) * (p.crouching?0.48:1);
   if (!p.onGround) speed *= 0.92;
-  if (sprinting) p.stam = Math.max(0, p.stam - 11*dt);   /* la estamina baja mas despacio */
-  else { p.stamRegen = (p.stamRegen||0) - dt; if (p.stamRegen <= 0) p.stam = Math.min(p.maxStam, p.stam + 26*dt); }
+  /* correr ya no cuesta nada: la barra solo baja al esquivar y sube muy rapido */
+  p.stamRegen = (p.stamRegen||0) - dt;
+  if (p.stamRegen <= 0) p.stam = Math.min(p.maxStam, p.stam + STAM_REGEN*dt);
 
   /* ---------- dash con i-frames ---------- */
-  if (down('dash') && p.dashCd <= 0 && p.stam >= 18 && !p.exhausted) {
-    p.stam -= 18; p.dashCd = 0.85; p.stamRegen = 0.7;
+  if (down('dash') && p.dashCd <= 0 && p.stam >= DASH_COST) {
+    p.stam -= DASH_COST; p.dashCd = 0.85/(1 + p.up.dashCd); p.stamRegen = 0.92;
     p.iframe = 0.35 * (1 + p.up.iframes);
     const da = (len>0) ? Math.atan2(my,mx) : p.ang;
     p.dashVX = Math.cos(da)*11; p.dashVY = Math.sin(da)*11; p.dashT = 0.17;
@@ -2533,6 +2625,17 @@ function hitsProp(x, y, r) {
   }
   return false;
 }
+/* El anfitrion crea los jefes, pero los clientes solo reciben la lista de
+   enemigos: sin esto no verian la barra, o arrastrarian la de la sala
+   anterior en salas donde ya no hay ningun jefe. */
+function refreshBossRef() {
+  let mejor = null;
+  for (const e of G.enemies) {
+    if (!e.alive || !(e.boss || e.mini)) continue;
+    if (!mejor || (e.boss && !mejor.boss) || e.maxhp > mejor.maxhp) mejor = e;
+  }
+  G.bossRef = mejor;
+}
 function spawnRoomEnemies() {
   G.enemies.length = 0;
   if (G.room === 0) { G.bossRef = null; return; }        /* sala 0: zona segura */
@@ -2584,6 +2687,7 @@ function startRoom(n, seed) {
   }
   MAP.lampsOn = !apagon;
   G.roomState = 'fight'; G.portalOn = false; G.exitT = 0; G.modBanner = 0;
+  G.bossRef = null; G.upgWait = null; G.upgT = 0;
   const total = Math.max(1, G.players.size);
   for (const p of G.players.values()) {
     const a = ((p.order-1)/total) * TAU;
@@ -2643,7 +2747,26 @@ function updateExitCircle(dt) {
 function roomCleared() {
   G.roomState = 'cleared';
   G.cleared++;
-  if (UPGRADE_ROOMS.includes(G.room) || BOSS_ROOMS[G.room]) { openUpgrades(); return; }
+  if (UPGRADE_ROOMS.includes(G.room) || BOSS_ROOMS[G.room]) {
+    /* todos eligen su mejora: el portal no se abre hasta que acaben */
+    G.upgWait = new Set([...G.players.values()].map(q => q.id));
+    G.upgT = 40;
+    NET.send({ t:'upgOpen' });
+    openUpgrades();
+    return;
+  }
+  G.portalOn = true;
+  addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b');
+  Snd.door();
+}
+/* el anfitrion lleva la cuenta de quien ya ha elegido */
+function markUpgradeDone(id) {
+  if (!G.isHost || !G.upgWait) return;
+  G.upgWait.delete(id);
+  if (G.upgWait.size === 0) openPortalAfterUpgrades();
+}
+function openPortalAfterUpgrades() {
+  G.upgWait = null; G.upgT = 0;
   G.portalOn = true;
   addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b');
   Snd.door();
@@ -2713,7 +2836,7 @@ const NET = {
       conn.on('close', () => {
         const id = conn.peer;
         const pl = G.players.get(id);
-        this.conns.delete(id); G.players.delete(id);
+        this.conns.delete(id); G.players.delete(id); dropUpgradeWait(id);
         if (pl) addMsg(pl.nick + ' SE HA DESCONECTADO', '#ff8a7a');
         this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
         renderLobby(); checkWipe();
@@ -2745,7 +2868,7 @@ const NET = {
     this.sendTo(id, { t:'kicked' });
     const c = this.conns.get(id);
     setTimeout(() => { if (c) c.close(); }, 250);
-    G.players.delete(id); this.conns.delete(id);
+    G.players.delete(id); this.conns.delete(id); dropUpgradeWait(id);
     this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
     renderLobby();
   },
@@ -2803,6 +2926,8 @@ function applySnapshot(m) {
       e.deadT = 0;
       spawnParts('blood', e.x, e.y, 0.6, 12, 2.4, 3, 1.1);
       Snd.die();
+    } else if (!wasAlive && e.alive) {                  /* el host lo da por vivo: deshacer la muerte local */
+      e.deadT = 0; e.gib = false;
     }
     seen.add(id);
   }
@@ -2832,6 +2957,7 @@ function applySnapshot(m) {
   G.portalOn = !!m.ps;
   G.roomState = m.rs ? 'cleared' : 'fight';
   G.exitT = (m.et||0)/100; G.inCircle = m.ic||0; G.needCircle = m.nc||0;
+  refreshBossRef();
 }
 /* --------------------------- entrada de red --------------------------- */
 function onNet(from, m) {
@@ -2878,9 +3004,19 @@ function onNet(from, m) {
       break;
     }
     case 'edmg': {
-      if (G.isHost) { const e = G.enemies.find(o=>o.id===m.id); if (e) e.hurt(clamp(m.dmg,0,900), from); }
+      /* lo aplican todos, no solo el anfitrion: asi cada jugador ve el
+         impacto, la cifra de dano y la muerte del enemigo al instante */
+      const e = G.enemies.find(o=>o.id===m.id);
+      if (e && e.alive) {
+        const dmg = clamp(m.dmg,0,900);
+        e.hurt(dmg, m.by || from);
+        dmgNumber(e.x, e.y, dmg, false, false);
+      }
+      if (G.isHost) relay(from, m);
       break;
     }
+    case 'unlock': { unlockWeapon(m.w, m.name); if (G.isHost) relay(from, m); break; }
+    case 'upgOpen': if (!G.isHost) openUpgrades(); break;
     case 'pdmg': {
       const p = G.players.get(m.id);
       if (p && p.isLocal) damagePlayer(p, m.dmg);
@@ -2917,9 +3053,12 @@ function onNet(from, m) {
     }
     case 'wantNext': if (G.isHost && G.portalOn) nextRoom(); break;
     case 'upgrade': { const p = G.players.get(m.id); if (p) addMsg((p.nick||'ALGUIEN') + ' ELIGIÓ ' + m.name, '#ffd45e');
-      if (G.isHost) relay(from, m); break; }
+      if (G.isHost) { markUpgradeDone(m.id); relay(from, m); } break; }
     case 'over': endRunLocal(m.win); break;
   }
+}
+function dropUpgradeWait(id) {                          /* si se va, no bloquea al resto */
+  if (G.isHost && G.upgWait) markUpgradeDone(id);
 }
 function relay(from, m) {
   for (const [id, c] of NET.conns) { if (id === from) continue; try { if (c.open) c.send(JSON.stringify(m)); } catch(e){} }
@@ -3136,7 +3275,7 @@ function collectSprites() {
     const wk = WEAPONS[pl.weapon] ? WEAPONS[pl.weapon].key : 'GLOCK';
     const st = pl.down ? 'dead' : (pl.anim>0 ? 'attack' : 'walk');
     const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down);
-    list.push({ x:pl.x, y:pl.y, tex, sx:pl.down?0.85:0.58, sy:pl.down?0.30:0.92,
+    list.push({ x:pl.x, y:pl.y, tex, sx:pl.down?0.66:0.44, sy:pl.down?0.24:0.72,
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
   }
   for (const q of G.pools) list.push({ x:q.x, y:q.y, tex:FX.pool(), sx:q.r*2, sy:q.r*0.55, anchor:'floor', lift:0.02, flash:0, alpha:0.9, raw:true });
@@ -3843,9 +3982,11 @@ function renderHUD() {
   const slotW = Math.min(38*s, ww/6);
   for (let i=0;i<5;i++) {
     const sx2 = x2+ww/2 - slotW*2.5 + i*slotW;
-    ctx.fillStyle = i===p.weapon ? '#ffcf5c' : '#5c5344';
+    const bloq = p.unlocked && !p.unlocked[i];
+    ctx.fillStyle = bloq ? '#2b2622' : (i===p.weapon ? '#ffcf5c' : '#5c5344');
     ctx.fillRect(sx2+2*s, top+barH-21*s, slotW-4*s, 14*s);
-    bigText(String(i+1), sx2+slotW/2, top+barH-9*s, (12*s)|0, i===p.weapon?'#2a2008':'#c9b48a','center',false);
+    bigText(bloq ? '🔒' : String(i+1), sx2+slotW/2, top+barH-9*s, (12*s)|0,
+            bloq ? '#6b6155' : (i===p.weapon?'#2a2008':'#c9b48a'), 'center', false);
   }
   /* ---------------- HUD de equipo (esquina) ---------------- */
   const team = [...G.players.values()].sort((a,b)=>a.order-b.order);
@@ -3867,10 +4008,24 @@ function renderHUD() {
             26*s, ty+2*s, fs2|0, pl.down?'#ff9b9b':'#f0ead8', 'left');
     bigText(Math.max(0,Math.round(pl.hp)), rowW+12*s, ty+2*s, fs2|0, '#e8e2d2', 'right');
   }
-  /* ---------------- barra de jefe ---------------- */
+  /* ---------------- contador de sala (centro superior) ---------------- */
   const boss = G.bossRef && G.bossRef.alive ? G.bossRef : null;
+  {
+    const cw = 150*s, ch = 30*s, cxb = (W-cw)/2, cy = 8*s;
+    ctx.fillStyle = 'rgba(6,6,10,0.72)'; ctx.fillRect(cxb, cy, cw, ch);
+    ctx.strokeStyle = boss ? 'rgba(224,25,25,0.85)' : 'rgba(180,150,90,0.55)';
+    ctx.lineWidth = Math.max(1.5, 2*s);
+    ctx.strokeRect(cxb, cy, cw, ch);
+    const etq = G.room === 0 ? 'ZONA SEGURA'
+              : (BOSS_ROOMS[G.room] ? 'SALA ' + G.room + ' · JEFE'
+              : (UPGRADE_ROOMS.includes(G.room) ? 'SALA ' + G.room + ' · BOTÍN'
+              : 'SALA ' + G.room + ' / ' + TOTAL_ROOMS));
+    bigText(etq, W/2, cy+ch*0.60, clamp(cw/(etq.length*0.60), 11*s, 19*s)|0,
+            boss ? '#ff9a7a' : '#ffe6a8');
+  }
+  /* ---------------- barra de jefe ---------------- */
   if (boss) {
-    const bw2 = W*0.6, bh = 30*s, bx = (W-bw2)/2, by = 22*s;
+    const bw2 = W*0.6, bh = 28*s, bx = (W-bw2)/2, by = 46*s;
     ctx.fillStyle='#000'; ctx.fillRect(bx-5*s, by-5*s, bw2+10*s, bh+10*s);
     ctx.strokeStyle='#fff'; ctx.lineWidth=Math.max(2,3*s);
     ctx.strokeRect(bx-5*s, by-5*s, bw2+10*s, bh+10*s);
@@ -3879,7 +4034,9 @@ function renderHUD() {
     const gg = ctx.createLinearGradient(bx,by,bx,by+bh);
     gg.addColorStop(0,'#ff5b4d'); gg.addColorStop(0.5,'#d61616'); gg.addColorStop(1,'#7a0606');
     ctx.fillStyle=gg; ctx.fillRect(bx,by,bw2*f,bh);
-    bigText(boss.def.name + (boss.phase2?'  · FASE 2':''), W/2, by+bh*0.76, (23*s)|0, '#ffffff');
+    bigText(boss.def.name + (boss.phase2?'  · FASE 2':''), W/2, by+bh*0.72, (21*s)|0, '#ffffff');
+    bigText(Math.max(0,Math.round(boss.hp)) + ' / ' + Math.round(boss.maxhp),
+            bx+bw2-6*s, by+bh*0.72, (12*s)|0, '#ffd9d0', 'right');
   }
   drawCrosshair(p);
   if (down('map')) renderMinimap();
@@ -4110,9 +4267,11 @@ function openUpgrades() {
       if (u.id === 'maxhp') p.hp = Math.min(p.maxhp, p.hp+25);
       addMsg('MEJORA: ' + u.name, '#ffd45e');
       NET.send({ t:'upgrade', id:G.meId, name:u.name });
+      if (G.isHost) markUpgradeDone(G.meId);
       showScreen(null);
-      G.state = 'run'; G.portalOn = true;
-      addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b');
+      G.state = 'run';
+      if (!NET.online) { G.portalOn = true; addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b'); }
+      else addMsg('ESPERANDO AL RESTO DEL EQUIPO…', '#9fd0ff');
       lockPointer();
     };
     box.appendChild(card);
@@ -4170,20 +4329,38 @@ function beginRun(room, seed) {
   lockPointer();
 }
 function startRunHost() {
-  G.diff = parseInt($('sel-diff').value,10) || 0;
+  G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
   G.ff = parseInt($('sel-ff').value,10) || 0;
   G.nPlayers = G.players.size;
   const seed = (Math.random()*1e9)|0;
   NET.send({ t:'start', room:0, seed, diff:G.diff, ff:G.ff, n:G.nPlayers });
   beginRun(0, seed);
 }
+/* ambos desplegables salen de DIFFS: una sola lista que mantener */
+function fillDiffSelects() {
+  for (const idSel of ['sel-diff','sel-solo-diff']) {
+    const el = $(idSel); if (!el) continue;
+    el.innerHTML = '';
+    DIFFS.forEach((d, i) => {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = d.name.charAt(0) + d.name.slice(1).toLowerCase() +
+                      (i === DIFF_IMPOSIBLE ? ' · arsenal bloqueado' : '');
+      if (i === DIFF_NORMAL) o.selected = true;
+      el.appendChild(o);
+    });
+    el.value = String(DIFF_NORMAL);
+  }
+}
+fillDiffSelects();
 function soloRun() {
   NET.online = false; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
   G.players.clear();
   const nick = ($('nick').value || 'ALIRO MERA').slice(0,16).toUpperCase();
   const p = makePlayer('SOLO', nick, mySkin(), 1, myFit());
   G.players.set('SOLO', p);
-  G.diff = 0; G.ff = 0; G.nPlayers = 1;
+  G.diff = clamp(parseInt($('sel-solo-diff').value,10)||0, 0, DIFFS.length-1);
+  G.ff = 0; G.nPlayers = 1;
   beginRun(0, (Math.random()*1e9)|0);
 }
 /* ------------------------------ entrada ------------------------------ */
@@ -4225,7 +4402,12 @@ window.addEventListener('mousemove', (ev) => {
 window.addEventListener('wheel', (ev) => {
   if (G.state !== 'run') return;
   const p = me(); if (!p) return;
-  selectWeapon(p, (p.weapon + (ev.deltaY>0?1:4)) % 5);
+  {                                                     /* la rueda salta las bloqueadas */
+    const paso = ev.deltaY > 0 ? 1 : 4;
+    let i = p.weapon;
+    for (let k=0;k<5;k++) { i = (i + paso) % 5; if (!p.unlocked || p.unlocked[i]) break; }
+    selectWeapon(p, i);
+  }
 }, { passive:true });
 cv.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
@@ -4291,7 +4473,7 @@ $('btn-start').onclick = () => startRunHost();
 $('btn-lobby-back').onclick = () => backToMenu();
 $('btn-end-back').onclick = () => backToMenu();
 $('btn-copy').onclick = () => { try { navigator.clipboard.writeText(NET.code); addMsg('CÓDIGO COPIADO','#8ce89b'); } catch(e){} };
-$('sel-diff').onchange = () => { G.diff = parseInt($('sel-diff').value,10)||0;
+$('sel-diff').onchange = () => { G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
   NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff }); renderLobby(); };
 $('sel-ff').onchange = () => { G.ff = parseInt($('sel-ff').value,10)||0;
   NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff }); renderLobby(); };
@@ -4312,12 +4494,17 @@ function frame(now) {
     if (G.cineT <= 0) { $('cine').classList.remove('on'); G.state = 'run'; lockPointer(); }
   }
   G.frames++;
-  if (G.state === 'run' || G.state === 'cine' || (G.state === 'pause' && NET.online)) {
+  const enLinea = NET.online && (G.state === 'pause' || G.state === 'upgrade');
+  if (G.state === 'run' || G.state === 'cine' || enLinea) {
     G.time += dt;
     updateLights(dt);
     const p = me();
     if (G.state === 'run') updateLocal(p, dt);
-    if (G.isHost && (G.state === 'run' || G.state === 'pause')) {
+    if (G.isHost && G.upgWait) {                          /* nadie se queda esperando eternamente */
+      G.upgT -= dt;
+      if (G.upgT <= 0) { addMsg('SE ACABÓ EL TIEMPO DE ELEGIR', '#ffd45e'); openPortalAfterUpgrades(); }
+    }
+    if (G.isHost && (G.state === 'run' || G.state === 'pause' || G.state === 'upgrade')) {
       G.flowT -= dt;
       if (G.flowT <= 0) { G.flowT = 0.3; buildFlows([...G.players.values()].filter(q=>!q.down)); }
       for (const e of G.enemies) e.update(dt);
