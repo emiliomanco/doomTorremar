@@ -82,18 +82,31 @@
   .tile.off{opacity:.42;cursor:not-allowed;border-style:dashed}
   .tile.off:hover{transform:none;border-color:#6b5a3c;box-shadow:none}
   .tile .soon{font-size:11px;letter-spacing:2px;color:#8a7a5a}
-  /* ---- ranuras de jugador del lobby ---- */
-  .slots{display:flex;gap:12px;justify-content:center;align-items:flex-end;flex-wrap:wrap;width:100%;
-    padding:6px 0 2px}
-  .slot{background:#12100c;border:2px solid #5a4c33;border-radius:10px;padding:8px 6px 6px;
-    display:flex;flex-direction:column;align-items:center;gap:3px;min-width:96px}
-  .slot canvas{display:block;image-rendering:auto}
-  .slot .pnum{font-family:Impact,sans-serif;letter-spacing:2px;color:#c9b48a;font-size:13px}
-  .slot .pnick{font-size:13px;color:#f0ead8;max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .slot .ptag{font-size:10px;color:#8a7a5a;letter-spacing:1px}
-  .slot.me{border-color:#ffd45e;background:#1d1710}
-  .slot.free{border-style:dashed;opacity:.45;min-width:64px}
-  .slot.free canvas{width:44px;height:72px}
+  /* ---- escenario de la sala de espera ---- */
+  .stage{position:relative;width:100%;border-radius:14px;overflow:hidden;
+    background:radial-gradient(ellipse 60% 90% at 50% 84%,#3a2f1c 0%,#1a1712 42%,#0c0b0e 100%);
+    border:1px solid #3a3226;padding:14px 10px 10px;min-height:262px;
+    display:flex;align-items:flex-end;justify-content:center;gap:10px}
+  .stage::after{content:'';position:absolute;left:6%;right:6%;bottom:8px;height:2px;
+    background:linear-gradient(90deg,transparent,rgba(255,212,94,.45),transparent)}
+  .pod{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;
+    padding-bottom:6px;transition:.18s}
+  .pod .glow{position:absolute;bottom:16px;width:120%;height:16px;border-radius:50%;
+    background:radial-gradient(ellipse at center,rgba(255,212,94,.28),transparent 70%)}
+  .pod canvas{display:block;image-rendering:auto;position:relative}
+  .pod .plabel{font-family:Impact,"Arial Black",sans-serif;letter-spacing:1px;font-size:13px;
+    color:#f0ead8;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pod .pslot{font-size:10px;letter-spacing:2px;color:#8a7a5a}
+  .pod.me .plabel{color:#ffd45e}
+  .pod.me .glow{background:radial-gradient(ellipse at center,rgba(255,212,94,.55),transparent 70%)}
+  .pod .crown{font-size:12px}
+  .pod .kick{font-size:9px;padding:2px 6px;margin-top:2px}
+  .empties{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+  .empty{width:34px;height:46px;border:2px dashed #4a4234;border-radius:6px;display:flex;
+    align-items:center;justify-content:center;color:#4a4234;font-size:11px;letter-spacing:1px}
+  .codepill{font-family:"Courier New",monospace;font-size:22px;letter-spacing:5px;color:#8ce89b;
+    background:#0d1410;border:2px dashed #2f8f4a;border-radius:8px;padding:6px 16px}
+  .lbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;width:100%}
   .hairgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;width:100%;
     max-height:190px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:8px}
   .hitem{background:#14110e;border:2px solid #5a4c33;border-radius:6px;cursor:pointer;padding:2px 0 3px;
@@ -118,8 +131,8 @@
   </div>
   <div class="tiles home">
     <div class="tile cust" id="tile-char">
-      <canvas id="home-preview" width="120" height="196"
-              style="width:120px;height:196px;image-rendering:auto"></canvas>
+      <canvas id="home-preview" width="150" height="228"
+              style="width:150px;height:228px;image-rendering:auto"></canvas>
       <h3>PERSONALIZACIÓN</h3>
       <p>Apodo, piel, uniforme y 20 peinados</p>
     </div>
@@ -189,13 +202,13 @@
       <div class="col" style="flex:.85;min-width:220px;align-items:center">
         <input id="nick" maxlength="16" placeholder="Aliro Mera"
                style="text-align:center;font-size:18px;width:100%;max-width:230px">
-        <canvas id="char-preview" width="160" height="260"
-                style="width:160px;height:260px;image-rendering:auto"></canvas>
+        <canvas id="char-preview" width="206" height="308"
+                style="width:206px;height:308px;image-rendering:auto"></canvas>
       </div>
     </div>
     <div class="row" style="align-items:flex-start;gap:22px">
       <div class="col" style="flex:1.3;min-width:300px">
-        <div class="muted">PEINADO · 20 estilos</div>
+        <div class="muted" id="hair-count">PEINADO</div>
         <div class="hairgrid" id="hair-list"></div>
       </div>
       <div class="col" style="flex:1;min-width:250px">
@@ -236,17 +249,19 @@
   <button class="closeX" id="btn-lobby-back">✕</button>
   <h2 id="lobby-title">SALA DE ESPERA</h2>
   <div class="panel col">
-    <div class="row" id="code-row"><span class="muted">CÓDIGO DE SALA</span><div id="code">------</div>
+    <div class="lbar" id="code-row"><span class="muted">CÓDIGO DE SALA</span>
+      <div class="codepill" id="code">------</div>
       <button id="btn-copy">COPIAR</button></div>
-    <div class="slots" id="slot-list"></div>
+    <div class="stage" id="slot-list"></div>
+    <div class="empties" id="empty-list"></div>
     <div class="plist" id="lobby-list"></div>
-    <div class="row" id="host-controls">
+    <div class="lbar" id="host-controls">
       <span class="muted">DIFICULTAD</span>
       <select id="sel-diff"></select>
       <span class="muted" id="ff-label">FUEGO AMIGO</span>
       <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select>
     </div>
-    <div class="row">
+    <div class="lbar">
       <button id="btn-lobby-char">PERSONALIZAR</button>
       <button id="btn-start" class="go">START</button>
     </div>
@@ -411,7 +426,8 @@ const mySkin = () => PREFS.skin || pick(SKINS);
 const myFit  = () => (PREFS.fit === null ? (Math.random() < 0.5 ? 0 : 1) : PREFS.fit);
 /* pelo: si nunca se ha tocado, se sortea estilo y color natural */
 const HAIR_NAT = ['#1a1208','#2a1f18','#3d2a17','#5a3a1e','#7a5228','#a06a33','#c99a4e','#6b6b6b','#d8d4cc'];
-const myHair    = () => (PREFS.hair === null ? ((Math.random()*20)|0) : PREFS.hair);
+const myHair    = () => (PREFS.hair === null ? ((Math.random()*HAIRS.length)|0)
+                                             : clamp(PREFS.hair|0, 0, HAIRS.length-1));
 const myHairCol = () => PREFS.hairCol || pick(HAIR_NAT);
 
 /* ---- color de piel: solo tonos calidos, nada de azules ni morados ---- */
@@ -1134,16 +1150,19 @@ const SWING = [0,1,0,-1];
    de la cabeza (centro, radios) y el color elegido, y se apana solo: unos
    se apoyan en el casquete basico y otros lo ignoran del todo.
    --------------------------------------------------------------------- */
+/* El casquete va alto y algo mas ancho que el craneo: si se ajusta al hueso
+   asoman calvas en las esquinas de arriba. */
+const CAP_Y = 0.26, CAP_A = 0.80, CAP_W = 1.08;
 function hairCap(c, g, alto, ancho) {                   /* casquete basico */
-  const a = alto === undefined ? 0.62 : alto, w = ancho === undefined ? 1.02 : ancho;
-  c.beginPath(); c.ellipse(g.cx, g.cy - g.ry*0.36, g.rx*w, g.ry*a, 0, Math.PI, TAU); c.fill();
-  c.fillRect(g.cx - g.rx*w, g.cy - g.ry*0.42, g.rx*w*2, g.ry*0.22);
+  const a = alto === undefined ? CAP_A : alto, w = ancho === undefined ? CAP_W : ancho;
+  c.beginPath(); c.ellipse(g.cx, g.cy - g.ry*CAP_Y, g.rx*w, g.ry*a, 0, Math.PI, TAU); c.fill();
+  c.fillRect(g.cx - g.rx*w, g.cy - g.ry*0.34, g.rx*w*2, g.ry*0.14);
 }
 function hairClip(c, g, fn) {                           /* recorta al casquete */
   c.save();
   c.beginPath();
-  c.ellipse(g.cx, g.cy - g.ry*0.36, g.rx*1.02, g.ry*0.62, 0, Math.PI, TAU);
-  c.rect(g.cx - g.rx*1.02, g.cy - g.ry*0.42, g.rx*2.04, g.ry*0.22);
+  c.ellipse(g.cx, g.cy - g.ry*CAP_Y, g.rx*CAP_W, g.ry*CAP_A, 0, Math.PI, TAU);
+  c.rect(g.cx - g.rx*CAP_W, g.cy - g.ry*0.34, g.rx*CAP_W*2, g.ry*0.14);
   c.clip();
   fn();
   c.restore();
@@ -1165,120 +1184,91 @@ const HAIRS = [
   { id:'corto', name:'CORTO CLÁSICO', draw:(c,g)=>{ c.fillStyle=g.col; hairCap(c,g); } },
 
   { id:'rapado', name:'RAPADO', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.46,0.98);
+      c.fillStyle=g.col; hairCap(c,g,0.60,1.04);
       c.fillStyle=g.dark; hairClip(c,g,()=>{
         for(let i=0;i<14;i++) ellipse(c, g.cx+rndSeed(i)*g.rx*0.9, g.cy-g.ry*(0.30+rndSeed(i+7)*0.45),
                                      g.rx*0.07, g.ry*0.07, g.dark); }); } },
 
-  { id:'cero', name:'AL CERO', draw:(c,g)=>{
-      c.globalAlpha=0.55; c.fillStyle=g.col; hairCap(c,g,0.38,0.96); c.globalAlpha=1; } },
+  { id:'cero', name:'AL CERO', draw:()=>{} },           /* sin nada: calvo total */
 
-  { id:'calvo', name:'CALVO', draw:(c,g)=>{
-      c.fillStyle=g.col;                                /* solo queda pelo en las sienes */
+  { id:'pacheco', name:'PACHECO CLASSIC', draw:(c,g)=>{
+      c.fillStyle=g.col;                                /* solo las dos matas de las sienes */
       for (const sx of [-1, 1]) {
         c.beginPath();
-        c.ellipse(g.cx + sx*g.rx*0.84, g.cy - g.ry*0.20, g.rx*0.20, g.ry*0.40, 0, 0, TAU);
+        c.ellipse(g.cx + sx*g.rx*0.84, g.cy - g.ry*0.18, g.rx*0.21, g.ry*0.42, 0, 0, TAU);
         c.fill();
-      }
-      c.fillStyle=g.dark;                               /* raya de la nuca por detras */
-      c.beginPath();
-      c.ellipse(g.cx, g.cy - g.ry*0.52, g.rx*0.88, g.ry*0.16, 0, Math.PI, TAU);
-      c.fill(); } },
-
-  { id:'entradas', name:'ENTRADAS', draw:(c,g)=>{
-      c.fillStyle=g.col;
-      c.beginPath();                                    /* casquete menos los dos golfos */
-      c.ellipse(g.cx, g.cy-g.ry*0.36, g.rx*1.00, g.ry*0.54, 0, Math.PI, TAU);
-      c.rect(g.cx-g.rx*1.00, g.cy-g.ry*0.42, g.rx*2.00, g.ry*0.18);
-      c.ellipse(g.cx-g.rx*0.60, g.cy-g.ry*0.44, g.rx*0.32, g.ry*0.26, 0, 0, TAU);
-      c.ellipse(g.cx+g.rx*0.60, g.cy-g.ry*0.44, g.rx*0.32, g.ry*0.26, 0, 0, TAU);
-      c.fill('evenodd'); } },
-
-  { id:'raya', name:'RAYA AL LADO', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g);
-      hairClip(c,g,()=>{ c.fillStyle=g.dark;
-        c.fillRect(g.cx-g.rx*0.52, g.cy-g.ry*1.05, Math.max(1,g.rx*0.10), g.ry*0.90); });
-      c.fillStyle=g.light;
-      c.beginPath(); c.ellipse(g.cx-g.rx*0.28, g.cy-g.ry*0.62, g.rx*0.52, g.ry*0.24, 0, Math.PI, TAU); c.fill(); } },
-
-  { id:'atras', name:'HACIA ATRÁS', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.70,1.00);
-      c.fillStyle=g.dark;
-      for(let i=0;i<4;i++)
-        c.fillRect(g.cx-g.rx*(0.86-i*0.02), g.cy-g.ry*(0.92-i*0.13), g.rx*(1.72-i*0.06), g.ry*0.045);
-      c.fillStyle=g.light;
-      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.82, g.rx*0.96, g.ry*0.26, 0, Math.PI, TAU); c.fill(); } },
+      } } },
 
   { id:'tupe', name:'TUPÉ', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.58,1.00);
+      c.fillStyle=g.col; hairCap(c,g,0.74,1.06);
       c.beginPath();                                    /* copete alto hacia delante */
-      c.moveTo(g.cx-g.rx*0.86, g.cy-g.ry*0.62);
-      c.quadraticCurveTo(g.cx-g.rx*0.30, g.cy-g.alto(1.55), g.cx+g.rx*0.55, g.cy-g.alto(1.10));
-      c.quadraticCurveTo(g.cx+g.rx*0.95, g.cy-g.alto(0.92), g.cx+g.rx*0.92, g.cy-g.ry*0.50);
+      c.moveTo(g.cx-g.rx*0.90, g.cy-g.ry*0.62);
+      c.quadraticCurveTo(g.cx-g.rx*0.30, g.cy-g.alto(1.80), g.cx+g.rx*0.55, g.cy-g.alto(1.28));
+      c.quadraticCurveTo(g.cx+g.rx*1.02, g.cy-g.alto(1.02), g.cx+g.rx*0.96, g.cy-g.ry*0.50);
       c.closePath(); c.fill();
       c.fillStyle=g.light;
       c.beginPath();
-      c.moveTo(g.cx-g.rx*0.50, g.cy-g.alto(0.85));
-      c.quadraticCurveTo(g.cx-g.rx*0.05, g.cy-g.alto(1.32), g.cx+g.rx*0.45, g.cy-g.alto(1.00));
-      c.quadraticCurveTo(g.cx-g.rx*0.02, g.cy-g.alto(1.10), g.cx-g.rx*0.50, g.cy-g.alto(0.85));
+      c.moveTo(g.cx-g.rx*0.50, g.cy-g.alto(0.95));
+      c.quadraticCurveTo(g.cx-g.rx*0.05, g.cy-g.alto(1.56), g.cx+g.rx*0.45, g.cy-g.alto(1.16));
+      c.quadraticCurveTo(g.cx-g.rx*0.02, g.cy-g.alto(1.28), g.cx-g.rx*0.50, g.cy-g.alto(0.95));
       c.fill(); } },
 
   { id:'flequillo', name:'FLEQUILLO', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.60,1.02);
+      c.fillStyle=g.col; hairCap(c,g,0.80,1.08);
       c.beginPath();                                    /* cortina sobre la frente */
-      c.moveTo(g.cx-g.rx*1.00, g.cy-g.ry*0.42);
+      c.moveTo(g.cx-g.rx*1.04, g.cy-g.ry*0.34);
       for(let i=0;i<=6;i++){
-        const t=i/6, x=g.cx+g.rx*(-1.00+t*2.00);
-        c.lineTo(x, g.cy-g.ry*(0.42 - (i%2?0.30:0.16)));
+        const t=i/6, x=g.cx+g.rx*(-1.04+t*2.08);
+        c.lineTo(x, g.cy-g.ry*(0.34 - (i%2?0.30:0.14)));
       }
-      c.lineTo(g.cx+g.rx*1.00, g.cy-g.ry*0.42);
+      c.lineTo(g.cx+g.rx*1.04, g.cy-g.ry*0.34);
       c.closePath(); c.fill(); } },
 
   { id:'tazon', name:'CORTE TAZÓN', draw:(c,g)=>{
       c.fillStyle=g.col;
-      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.22, g.rx*1.10, g.ry*0.82, 0, Math.PI, TAU); c.fill();
-      c.fillRect(g.cx-g.rx*1.10, g.cy-g.ry*0.28, g.rx*2.20, g.ry*0.26); } },
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.24, g.rx*1.12, g.ry*0.92, 0, Math.PI, TAU); c.fill();
+      c.fillRect(g.cx-g.rx*1.12, g.cy-g.ry*0.30, g.rx*2.24, g.ry*0.20); } },
 
   { id:'afro', name:'AFRO', draw:(c,g)=>{
       c.save();
       c.beginPath();                                    /* anillo: la cara queda libre */
-      c.ellipse(g.cx, g.cy-g.ry*0.44, g.rx*1.36, g.ry*1.06, 0, 0, TAU);
-      c.ellipse(g.cx, g.cy+g.ry*0.14, g.rx*0.84, g.ry*0.80, 0, 0, TAU);
+      c.ellipse(g.cx, g.cy-g.ry*0.40, g.rx*1.38, g.ry*1.10, 0, 0, TAU);
+      c.ellipse(g.cx, g.cy+g.ry*0.30, g.rx*0.92, g.ry*0.86, 0, 0, TAU);
       c.clip('evenodd');
       c.fillStyle=g.col;
-      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.44, g.rx*1.36, g.ry*1.06, 0, 0, TAU); c.fill();
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.40, g.rx*1.38, g.ry*1.10, 0, 0, TAU); c.fill();
       for(let i=0;i<18;i++){                            /* volumen a base de rizos */
-        const a=i*TAU/18, r=g.rx*(0.92+rndSeed(i)*0.34);
-        ellipse(c, g.cx+Math.cos(a)*r, g.cy-g.ry*0.44+Math.sin(a)*g.ry*0.74,
+        const a=i*TAU/18, r=g.rx*(0.94+rndSeed(i)*0.32);
+        ellipse(c, g.cx+Math.cos(a)*r, g.cy-g.ry*0.40+Math.sin(a)*g.ry*0.76,
                 g.rx*0.17, g.ry*0.14, i%2 ? g.dark : g.light);
       }
       c.restore(); } },
 
   { id:'rizos', name:'RIZOS', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.72,1.06);
+      c.fillStyle=g.col; hairCap(c,g,0.86,1.10);
       for(let i=0;i<11;i++){
-        const t=i/10, x=g.cx+g.rx*(-1.02+t*2.04);
-        ellipse(c, x, g.cy-g.ry*(0.72+rndSeed(i)*0.30), g.rx*0.22, g.ry*0.20, i%2?g.light:g.col);
+        const t=i/10, x=g.cx+g.rx*(-1.04+t*2.08);
+        ellipse(c, x, g.cy-g.ry*(0.72+rndSeed(i)*0.28), g.rx*0.22, g.ry*0.20, i%2?g.light:g.col);
       }
       for(const sx of [-1,1])
         for(let i=0;i<3;i++)
-          ellipse(c, g.cx+sx*g.rx*(0.94+rndSeed(i)*0.12), g.cy-g.ry*(0.28-i*0.22),
+          ellipse(c, g.cx+sx*g.rx*(0.96+rndSeed(i)*0.10), g.cy-g.ry*(0.34-i*0.20),
                   g.rx*0.19, g.ry*0.17, i%2?g.col:g.dark); } },
 
   { id:'trenzas', name:'TRENZAS', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.56,1.00);
+      c.fillStyle=g.col; hairCap(c,g,0.76,1.06);
       c.strokeStyle=g.dark; c.lineWidth=Math.max(1,g.rx*0.10); c.lineCap='round';
       for(let i=0;i<7;i++){
         const x=g.cx+g.rx*(-0.82+i*0.273);
         c.beginPath();
-        c.moveTo(x, g.cy-g.ry*0.94);
-        c.quadraticCurveTo(x*0.5+g.cx*0.5, g.cy-g.ry*0.60, x, g.cy-g.ry*0.30);
+        c.moveTo(x, g.cy-g.ry*0.98);
+        c.quadraticCurveTo(x*0.5+g.cx*0.5, g.cy-g.ry*0.64, x, g.cy-g.ry*0.28);
         c.stroke();
       }
       c.lineCap='butt'; } },
 
   { id:'rastas', name:'RASTAS', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.58,1.00);
+      c.fillStyle=g.col; hairCap(c,g,0.78,1.06);
       c.strokeStyle=g.col; c.lineCap='round';
       c.lineWidth=Math.max(1.5,g.rx*0.16);
       for(let i=0;i<8;i++){
@@ -1298,9 +1288,9 @@ const HAIRS = [
   { id:'melena', name:'MELENA', draw:(c,g)=>{
       c.fillStyle=g.col;
       hairSides(c, g, 1.55, 0.34);
-      hairCap(c,g,0.66,1.04);
+      hairCap(c,g,0.84,1.08);
       c.fillStyle=g.light;
-      c.beginPath(); c.ellipse(g.cx-g.rx*0.34, g.cy-g.ry*0.66, g.rx*0.46, g.ry*0.20, 0, Math.PI, TAU); c.fill(); } },
+      c.beginPath(); c.ellipse(g.cx-g.rx*0.34, g.cy-g.ry*0.70, g.rx*0.46, g.ry*0.20, 0, Math.PI, TAU); c.fill(); } },
 
   { id:'coleta', name:'COLETA', draw:(c,g)=>{
       c.fillStyle=g.col;
@@ -1309,24 +1299,23 @@ const HAIRS = [
       c.quadraticCurveTo(g.cx+g.rx*1.55, g.cy+g.ry*0.10, g.cx+g.rx*1.20, g.cy+g.ry*1.15);
       c.quadraticCurveTo(g.cx+g.rx*1.00, g.cy+g.ry*0.30, g.cx+g.rx*0.78, g.cy-g.ry*0.30);
       c.closePath(); c.fill();
-      hairCap(c,g,0.62,1.02);
+      hairCap(c,g,0.82,1.06);
       c.fillStyle=g.dark;
       ellipse(c, g.cx+g.rx*0.92, g.cy-g.ry*0.42, g.rx*0.16, g.ry*0.12, g.dark); } },
 
   { id:'mono', name:'MOÑO', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.60,1.00);
-      c.beginPath(); c.ellipse(g.cx, g.cy-g.alto(1.02), g.rx*0.42, g.ry*0.34, 0, 0, TAU); c.fill();
+      c.fillStyle=g.col; hairCap(c,g,0.80,1.06);
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.alto(1.44), g.rx*0.44, g.ry*0.36, 0, 0, TAU); c.fill();
       c.fillStyle=g.dark;
-      c.beginPath(); c.ellipse(g.cx, g.cy-g.alto(0.80), g.rx*0.30, g.ry*0.10, 0, 0, TAU); c.fill(); } },
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.alto(1.14), g.rx*0.30, g.ry*0.10, 0, 0, TAU); c.fill(); } },
 
   { id:'mohicano', name:'MOHICANO', draw:(c,g)=>{
-      c.fillStyle=g.dark; hairCap(c,g,0.42,0.98);        /* laterales rapados */
-      c.fillStyle=g.col;
+      c.fillStyle=g.col;                                /* los lados van rapados: nada */
       c.beginPath();
-      c.moveTo(g.cx-g.rx*0.34, g.cy-g.ry*0.40);
-      c.quadraticCurveTo(g.cx-g.rx*0.30, g.cy-g.alto(1.20), g.cx-g.rx*0.10, g.cy-g.alto(1.62));
+      c.moveTo(g.cx-g.rx*0.30, g.cy-g.ry*0.62);
+      c.quadraticCurveTo(g.cx-g.rx*0.28, g.cy-g.alto(1.20), g.cx-g.rx*0.10, g.cy-g.alto(1.62));
       c.lineTo(g.cx+g.rx*0.10, g.cy-g.alto(1.62));
-      c.quadraticCurveTo(g.cx+g.rx*0.30, g.cy-g.alto(1.20), g.cx+g.rx*0.34, g.cy-g.ry*0.40);
+      c.quadraticCurveTo(g.cx+g.rx*0.28, g.cy-g.alto(1.20), g.cx+g.rx*0.30, g.cy-g.ry*0.62);
       c.closePath(); c.fill();
       c.fillStyle=g.light;                              /* puntas de la cresta */
       for(let i=0;i<4;i++){
@@ -1339,35 +1328,27 @@ const HAIRS = [
       } } },
 
   { id:'puntas', name:'PUNTAS', draw:(c,g)=>{
-      c.fillStyle=g.col; hairCap(c,g,0.58,1.00);
+      c.fillStyle=g.col; hairCap(c,g,0.78,1.06);
+      /* las puntas nacen del borde del casquete, no del aire */
       for(let i=0;i<9;i++){
-        const t=i/8, x=g.cx+g.rx*(-0.92+t*1.84);
-        const cima=g.alto(0.72+0.42+((i%3)===1?0.34:0.14));
+        const t=i/8, u=-0.88+t*1.76, x=g.cx+g.rx*u;
+        const base = g.cy - g.ry*CAP_Y - g.ry*CAP_A*Math.sqrt(Math.max(0,1-(u/CAP_W)*(u/CAP_W)));
+        const h = g.ry*(0.20+((i%3)===1?0.30:0.12));
         c.beginPath();
-        c.moveTo(x-g.rx*0.11, g.cy-g.ry*0.72);
-        c.lineTo(x, g.cy-cima);
-        c.lineTo(x+g.rx*0.11, g.cy-g.ry*0.72);
+        c.moveTo(x-g.rx*0.11, base+g.ry*0.05);
+        c.lineTo(x, Math.max(g.cy-g.alto(1.62), base-h));
+        c.lineTo(x+g.rx*0.11, base+g.ry*0.05);
         c.closePath(); c.fill();
-      } } },
-
-  { id:'undercut', name:'UNDERCUT', draw:(c,g)=>{
-      c.fillStyle=g.dark; hairCap(c,g,0.50,1.00);
-      c.fillStyle=g.col;
-      c.beginPath();
-      c.ellipse(g.cx, g.cy-g.ry*0.62, g.rx*0.86, g.ry*0.58, 0, Math.PI, TAU);
-      c.fill();
-      c.fillRect(g.cx-g.rx*0.86, g.cy-g.ry*0.70, g.rx*1.72, g.ry*0.16);
-      c.fillStyle=g.light;
-      c.beginPath(); c.ellipse(g.cx+g.rx*0.20, g.cy-g.ry*0.86, g.rx*0.46, g.ry*0.18, 0, Math.PI, TAU); c.fill(); } }
+      } } }
 ];
 /* ruido estable: los peinados no deben cambiar entre fotogramas */
 function rndSeed(i) { const v = Math.sin(i*127.1 + 311.7)*43758.5453; return (v - Math.floor(v))*2 - 1; }
-function drawHairStyle(c, idx, cx, cy, rx, ry, col) {
+function drawHairStyle(c, idx, cx, cy, rx, ry, col, cabecera) {
   const h = HAIRS[clamp(idx|0, 0, HAIRS.length-1)];
   if (!h) return;
-  /* up = cuanto se puede subir sin salirse del lienzo: los peinados altos
-     (cresta, tupe, mono) se recortan solos en sprites con poca cabecera */
-  const g = { cx, cy, rx, ry, col, up: Math.max(ry*0.6, cy - 1),
+  /* up = cuanto se puede subir sin salirse del lienzo; cabecera es el margen
+     transparente que el sprite deja por encima de la figura */
+  const g = { cx, cy, rx, ry, col, up: Math.max(ry*0.6, cy - 1 + (cabecera||0)),
               dark: shade(col, 0.68), light: shade(col, 1.28) };
   g.alto = (k) => Math.min(ry*k, g.up*0.96);            /* altura util sobre el centro */
   c.save(); h.draw(c, g); c.restore();
@@ -1411,8 +1392,21 @@ function figure(c, W, H, o) {
     ellipse(c, 0, armLen-armW*0.15, armW*0.52, armW*0.52, skin);
     c.restore();
   };
-  if (o.attack) { arm(-shW/2-armW*0.15, -2.45); arm(shW/2+armW*0.15, 2.45); }
-  else { arm(-shW/2-armW*0.15, -0.10+sw*0.42); arm(shW/2+armW*0.15, 0.10+sw*0.42); }
+  /* se guarda donde acaba el brazo derecho para colgar ahi el arma */
+  let manoX = cx+shW*0.62, manoY = shoulderY+armLen*0.86, manoA = 0;
+  const marcaMano = (sx, ang) => {
+    const y = armLen - armW*0.15;
+    manoX = cx + sx - y*Math.sin(ang);
+    manoY = shoulderY + y*Math.cos(ang);
+    manoA = ang;
+  };
+  if (o.attack) {
+    arm(-shW/2-armW*0.15, -2.45); arm(shW/2+armW*0.15, 2.45);
+    marcaMano(shW/2+armW*0.15, 2.45);
+  } else {
+    arm(-shW/2-armW*0.15, -0.10+sw*0.42); arm(shW/2+armW*0.15, 0.10+sw*0.42);
+    marcaMano(shW/2+armW*0.15, 0.10+sw*0.42);
+  }
   /* cuello y cabeza */
   c.fillStyle = skinD; c.fillRect(cx-headRX*0.28, bodyTop-headH*0.10, headRX*0.56, headH*0.14);
   if (o.noJaw) {                                    /* cabeza sin mandibula */
@@ -1425,15 +1419,14 @@ function figure(c, W, H, o) {
   ellipse(c, cx-headRX*0.97, headCY+headRY*0.05, headRX*0.14, headRY*0.20, skinD);
   ellipse(c, cx+headRX*0.97, headCY+headRY*0.05, headRX*0.14, headRY*0.20, skinD);
   if (o.hairStyle !== undefined && o.hairStyle !== null) {
-    drawHairStyle(c, o.hairStyle, cx, headCY, headRX, headRY, o.hair || '#2a1f18');
+    drawHairStyle(c, o.hairStyle, cx, headCY, headRX, headRY, o.hair || '#2a1f18', o.headroom || 0);
   } else if (o.hair) {
     c.fillStyle = o.hair;
-    if (o.bald) {
+    if (o.bald) {                                   /* coronilla despejada, pelo a los lados */
       c.beginPath();
-      c.ellipse(cx-headRX*0.80, headCY+headRY*0.05, headRX*0.26, headRY*0.42, 0, 0, TAU);
-      c.ellipse(cx+headRX*0.80, headCY+headRY*0.05, headRX*0.26, headRY*0.42, 0, 0, TAU);
+      c.ellipse(cx-headRX*0.86, headCY-headRY*0.10, headRX*0.22, headRY*0.44, 0, 0, TAU);
+      c.ellipse(cx+headRX*0.86, headCY-headRY*0.10, headRX*0.22, headRY*0.44, 0, 0, TAU);
       c.fill();
-      c.beginPath(); c.ellipse(cx, headCY+headRY*0.62, headRX*0.82, headRY*0.26, 0, 0, Math.PI); c.fill();
     } else {
       c.beginPath(); c.ellipse(cx, headCY-headRY*0.36, headRX*1.02, headRY*0.62, 0, Math.PI, TAU); c.fill();
       c.fillRect(cx-headRX*1.02, headCY-headRY*0.42, headRX*2.04, headRY*0.22);
@@ -1557,11 +1550,12 @@ function figure(c, W, H, o) {
   }
   if (o.emoji) emojiTxt(c, o.emoji, cx, bodyTop+torsoH*0.38, Math.min(W*0.40, torsoH*0.60));
   if (o.headEmoji) emojiTxt(c, o.headEmoji, cx, headH*0.12, headRX*0.85);
-  /* arma en la mano derecha */
-  if (o.weapon) drawHeldWeapon(c, cx+shW*0.62, shoulderY+armLen*0.86, W*0.34, o.weapon);
+  /* arma en la mano derecha, girada con el brazo */
+  if (o.weapon) drawHeldWeapon(c, manoX, manoY, W*0.34, o.weapon, manoA);
 }
-function drawHeldWeapon(c, x, y, sz, kind) {
+function drawHeldWeapon(c, x, y, sz, kind, ang) {
   c.save(); c.translate(x,y);
+  if (ang) c.rotate(ang*0.55);                          /* acompana al brazo sin exagerar */
   if (kind==='MACHETE') {
     c.rotate(-0.5);
     roundRect(c,-sz*0.07,-sz*1.15,sz*0.16,sz*1.15,2,'#cfd6dd');
@@ -1684,11 +1678,11 @@ const MINI_PENDIENTES = {
            beardFull:true, beardCol:'#241b13', angry:true } },
 
   angulo:   { id:'angulo', name:'ANGULO', mini:true, hp:980, speed:1.4, radius:0.52,
-    scaleX:0.82, scaleY:0.96, kind:'melee', dmg:21, cd:1.1, sight:20,
-    score:1700, tex:{w:190,h:228}, drop:1, attack:'charge',
+    scaleX:0.78, scaleY:1.30, kind:'melee', dmg:21, cd:1.1, sight:20,
+    score:1700, tex:{w:150,h:240}, drop:1, attack:'charge',
     chargeEvery:3.6, chargeTime:0.9, chargeMul:3.8, chargeMin:3.0, prefer:6.0,
     look:{ skin:'#57351f', shirt:'#2f4739', pants:'#24352b', hair:'#0f0b08',
-           headRatio:0.25, shoulders:0.70, headWide:1.12, suit:'#2f4739', dress:'#f7f5ee',
+           headRatio:0.21, shoulders:0.78, headWide:1.10, suit:'#2f4739', dress:'#f7f5ee',
            tie:'#8f7020', tiePat:'dot', mustache:true, beard:1, angry:true } }
 };
 
@@ -1715,7 +1709,7 @@ const BOSSES = {
     attack:'poison', prefer:9.0, lead:0.72,
     look:{ skin:'#c08a5e', shirt:'#4b515c', pants:'#3f444e', hair:'#171310', headRatio:0.27,
            shoulders:0.64, suit:'#4b515c', dress:'#f7f7f3', tie:'#8e1f3d', tiePat:'stripe',
-           beard:1, angry:true } },
+           bald:true, beard:1, angry:true } },
   jorge:  { id:'jorge', name:'JORGE CORONEL', boss:true, tier:4, room:50, hp:7000, speed:2.0, radius:0.58,
     scaleX:1.05, scaleY:1.90, dmg:44, cd:1.7, projSpeed:5.2, sight:44, score:25000, tex:{w:170,h:300},
     attack:'hell', prefer:10.0, lead:0.88, summon:'mixed', summonN:4, summonMax:7,
@@ -2077,17 +2071,27 @@ function spriteOf(def, state, frame, vr) {
   });
 }
 /* jugadores: piel variable, ropa SIEMPRE blanca */
+/* El personaje se dibuja en 128x208 pero el lienzo lleva margen arriba y a
+   los lados: sin el, las crestas se achicharraban contra el borde y el arma
+   salia cortada. El margen es transparente, asi que solo hay que compensar
+   la escala del billboard (PSX/PSY) para que el cuerpo mida lo mismo. */
+const PF_W = 128, PF_H = 208, PF_PX = 22, PF_PY = 50;
+const PS_W = PF_W + PF_PX*2, PS_H = PF_H + PF_PY;
+const PSX = PS_W/PF_W, PSY = PS_H/PF_H;
 function playerSprite(skin, fit, weaponKey, state, frame, down, hair, hairCol) {
   const o = OUTFITS[fit] || OUTFITS[0];
   const hs = clamp((hair === undefined || hair === null) ? 0 : hair|0, 0, HAIRS.length-1);
   const hc = hairCol || '#2a1f18';
   const key = 'P|'+skin+'|'+o.id+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0)+'|'+hs+'|'+hc;
-  return sprite(key, 128, 208, (c,W,H) => {
-    if (down) { corpse(c,W,H,{shirt:o.shirt, skin:skin}); return; }
-    figure(c,W,H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:hc, hairStyle:hs,
+  return sprite(key, PS_W, PS_H, (c) => {
+    c.save(); c.translate(PF_PX, PF_PY);
+    if (down) corpse(c,PF_W,PF_H,{shirt:o.shirt, skin:skin});
+    else figure(c,PF_W,PF_H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:hc, hairStyle:hs,
+      headroom: PF_PY - 4,
       headRatio:0.26, shoulders:0.66, swing: state==='walk'?SWING[frame&3]:0,
       attack: state==='attack', weapon: weaponKey,
       uniform: o.uniform, sleeve: 0.42, cuff: o.cuff });
+    c.restore();
   });
 }
 
@@ -4119,7 +4123,7 @@ function collectSprites() {
     const wk = WEAPONS[pl.weapon] ? WEAPONS[pl.weapon].key : 'GLOCK';
     const st = pl.down ? 'dead' : (pl.anim>0 ? 'attack' : 'walk');
     const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down, pl.hair, pl.hairCol);
-    list.push({ x:pl.x, y:pl.y, tex, sx:pl.down?0.66:0.44, sy:pl.down?0.24:0.72,
+    list.push({ x:pl.x, y:pl.y, tex, sx:(pl.down?0.66:0.44)*PSX, sy:(pl.down?0.24:0.72)*PSY,
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
   }
   for (const q of G.pools) list.push({ x:q.x, y:q.y, tex:FX.pool(), sx:q.r*2, sy:q.r*0.55, anchor:'floor', lift:0.02, flash:0, alpha:0.9, raw:true });
@@ -4974,50 +4978,65 @@ function showScreen(id) {
 function renderLobby() {
   const online = NET.online;
   const jug = [...G.players.values()].sort((a,b)=>a.order-b.order);
-  /* ---- ranuras P1..Pn con el personaje de cada uno ---- */
-  const slots = $('slot-list');
-  slots.innerHTML = '';
-  const total = online ? MAX_PLAYERS : 1;
-  for (let i = 0; i < total; i++) {
-    const p = jug[i];
-    const box = document.createElement('div');
-    box.className = 'slot' + (p ? (p.id === G.meId ? ' me' : '') : ' free');
-    const num = document.createElement('div');
-    num.className = 'pnum'; num.textContent = 'P' + (i+1);
+  const yo = G.meId;
+  /* El local va en el centro y el resto se reparte a los lados, de dentro
+     hacia fuera y cada vez mas pequeno, como en la sala de espera de la nota. */
+  const izq = [], der = [];
+  let centro = null;
+  jug.forEach((p) => {
+    if (p.id === yo && !centro) { centro = p; return; }
+    (izq.length <= der.length ? izq : der).push(p);
+  });
+  if (!centro) centro = izq.shift() || der.shift() || null;
+  izq.reverse();
+  const orden = [...izq, centro, ...der].filter(Boolean);
+  const stage = $('slot-list');
+  stage.innerHTML = '';
+  for (const p of orden) {
+    const dist = Math.abs(orden.indexOf(p) - orden.indexOf(centro));
+    const esc = p === centro ? 1 : Math.max(0.56, 0.82 - (dist-1)*0.12);
+    const pod = document.createElement('div');
+    pod.className = 'pod' + (p.id === yo ? ' me' : '');
+    const glow = document.createElement('div'); glow.className = 'glow';
     const cv = document.createElement('canvas');
-    const gran = p && p.id === G.meId;                  /* el tuyo se ve mas grande */
-    cv.width = gran ? 96 : 72; cv.height = gran ? 156 : 117;
-    const cc = cv.getContext('2d');
-    if (p) cc.drawImage(playerSprite(p.skin, p.fit|0, 'GLOCK', 'walk', 0, false, p.hair, p.hairCol),
-                        0, 0, cv.width, cv.height);
-    else {
-      cc.fillStyle = 'rgba(255,255,255,0.05)';
-      cc.fillRect(cv.width*0.22, cv.height*0.12, cv.width*0.56, cv.height*0.78);
-      cc.fillStyle = '#5a4c33'; cc.font = 'bold 30px sans-serif';
-      cc.textAlign = 'center'; cc.fillText('?', cv.width/2, cv.height*0.60);
-    }
+    /* el sprite lleva margen transparente: se escala con PSX/PSY para que el
+       cuerpo mida lo previsto y el pelo alto siga entrando */
+    cv.width = Math.round(104*esc*PSX); cv.height = Math.round(168*esc*PSY);
+    cv.getContext('2d').drawImage(
+      playerSprite(p.skin, p.fit|0, 'GLOCK', 'walk', 0, false, p.hair, p.hairCol),
+      0, 0, cv.width, cv.height);
     const nk = document.createElement('div');
-    nk.className = 'pnick'; nk.textContent = p ? p.nick : 'LIBRE';
-    const tg = document.createElement('div');
-    tg.className = 'ptag';
-    tg.textContent = p ? [p.id===G.hostId?'ANFITRIÓN':'', p.id===G.meId?'TÚ':''].filter(Boolean).join(' · ') : '';
-    box.appendChild(num); box.appendChild(cv); box.appendChild(nk); box.appendChild(tg);
-    if (online && G.isHost && p && p.id !== G.hostId) {
+    nk.className = 'plabel';
+    nk.textContent = (p.id === G.hostId && online ? '👑 ' : '') + p.nick;
+    const sl = document.createElement('div');
+    sl.className = 'pslot';
+    sl.textContent = 'P' + (jug.indexOf(p)+1) + (p.id === yo ? ' · TÚ' : '');
+    pod.appendChild(glow); pod.appendChild(cv); pod.appendChild(nk); pod.appendChild(sl);
+    if (online && G.isHost && p.id !== G.hostId) {
       const b = document.createElement('button');
-      b.className = 'red'; b.textContent = 'EXPULSAR';
-      b.style.cssText = 'font-size:10px;padding:3px 7px;margin-top:2px';
+      b.className = 'red kick'; b.textContent = 'EXPULSAR';
       b.onclick = () => NET.kick(p.id);
-      box.appendChild(b);
+      pod.appendChild(b);
     }
-    slots.appendChild(box);
+    stage.appendChild(pod);
+  }
+  /* huecos libres, discretos y debajo del escenario */
+  const vac = $('empty-list');
+  vac.innerHTML = '';
+  if (online) {
+    for (let i = jug.length; i < MAX_PLAYERS; i++) {
+      const e = document.createElement('div');
+      e.className = 'empty'; e.textContent = 'P' + (i+1);
+      vac.appendChild(e);
+    }
   }
   $('lobby-list').innerHTML = '';
-  /* ---- controles ---- */
-  const mando = G.isHost;                               /* en solitario tambien mandas tu */
+  const mando = G.isHost;
   $('host-controls').style.display = mando ? 'flex' : 'none';
   $('ff-label').style.display = online ? '' : 'none';
   $('sel-ff').style.display = online ? '' : 'none';
   $('code-row').style.display = online ? 'flex' : 'none';
+  $('empty-list').style.display = online ? 'flex' : 'none';
   $('btn-start').style.display = mando ? '' : 'none';
   $('lobby-hint').textContent = !online
     ? 'Partida en solitario. Elige dificultad y dale a START.'
@@ -5025,7 +5044,7 @@ function renderLobby() {
              : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':''));
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
   $('lobby-title').textContent = online
-    ? 'SALA DE ESPERA (' + G.players.size + '/' + MAX_PLAYERS + ')'
+    ? 'SALA DE ESPERA · ' + G.players.size + '/' + MAX_PLAYERS
     : 'PARTIDA EN SOLITARIO';
 }
 function renderKeys() {
@@ -5125,6 +5144,7 @@ function renderHairUI() {
     pl.dataset.done = '1';
   }
   const hl = $('hair-list');
+  $('hair-count').textContent = 'PEINADO · ' + HAIRS.length + ' estilos';
   if (!hl.dataset.done) {
     HAIRS.forEach((h, i) => {
       const it = document.createElement('div');
@@ -5195,15 +5215,14 @@ function renderCharUI(note) {
     const card = document.createElement('div');
     card.style.cssText = 'background:#14110e;border:2px solid ' +
       (o.id === charFit ? '#ffd45e' : '#5a4c33') + ';border-radius:9px;padding:6px 8px;cursor:pointer;' +
-      'display:flex;flex-direction:column;align-items:center;gap:3px;width:118px';
+      'display:flex;align-items:center;justify-content:center;width:118px;height:172px';
     const cv = document.createElement('canvas');
-    cv.width = 92; cv.height = 150;
+    cv.width = Math.round(80*PSX); cv.height = Math.round(128*PSY);
     cv.getContext('2d').drawImage(
-      playerSprite(charSkin, o.id, 'GLOCK', 'walk', 0, false, charHair, charHairCol), 0, 0, 92, 150);
-    const lb = document.createElement('div');
-    lb.style.cssText = 'font-size:10px;color:#c9b48a;text-align:center;line-height:1.15';
-    lb.textContent = o.name;
-    card.appendChild(cv); card.appendChild(lb);
+      playerSprite(charSkin, o.id, 'GLOCK', 'walk', 0, false, charHair, charHairCol),
+      0, 0, cv.width, cv.height);
+    card.title = o.name;                              /* el nombre solo en el tooltip */
+    card.appendChild(cv);
     card.onclick = () => { charFit = o.id; renderCharUI(); };
     fl.appendChild(card);
   }
