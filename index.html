@@ -666,6 +666,10 @@ const Snd = {
   head(){ this.tone(1180,0.06,'square',0.06,1720); this.noise(0.10,0.09,2400,1.4);
           setTimeout(()=>this.tone(1560,0.05,'triangle',0.05,2100),40); },
   slide(){ this.noise(0.34,0.09,700,0.9); this.tone(150,0.26,'sine',0.05,80); },
+  sicariato(){                                        /* dos silabas, tono de grito */
+    this.tone(210,0.16,'sawtooth',0.07,150);
+    setTimeout(()=>this.tone(240,0.20,'sawtooth',0.07,140), 190);
+  },
   hurt(){ this.tone(180,0.22,'sawtooth',0.10,70); },
   die(){ this.tone(300,0.5,'sawtooth',0.10,50); this.noise(0.4,0.12,700); },
   pick(){ this.tone(640,0.07,'triangle',0.06); setTimeout(()=>this.tone(940,0.09,'triangle',0.06),60); },
@@ -1552,6 +1556,14 @@ function figure(c, W, H, o) {
   if (o.headEmoji) emojiTxt(c, o.headEmoji, cx, headH*0.12, headRX*0.85);
   /* arma en la mano derecha, girada con el brazo */
   if (o.weapon) drawHeldWeapon(c, manoX, manoY, W*0.34, o.weapon, manoA);
+  if (o.weapon2) {                                  /* la segunda, en la izquierda */
+    const y2 = armLen - armW*0.15, a2 = o.attack ? -2.45 : (-0.10+sw*0.42);
+    c.save();
+    c.translate(cx - shW/2 - armW*0.15 - y2*Math.sin(a2), shoulderY + y2*Math.cos(a2));
+    c.scale(-1, 1);
+    drawHeldWeapon(c, 0, 0, W*0.34, o.weapon2, -a2);
+    c.restore();
+  }
 }
 function drawHeldWeapon(c, x, y, sz, kind, ang) {
   c.save(); c.translate(x,y);
@@ -1649,7 +1661,26 @@ const MINIBOSSES = {
   josue:    { id:'josue', name:'JOSUE', mini:true, hp:700, speed:1.3, radius:0.50, scaleX:0.95, scaleY:1.02,
     kind:'ranged', dmg:13, cd:1.15, projSpeed:6.2, sight:21, score:1350, tex:{w:165,h:215}, drop:1,
     attack:'formula',
-    look:{ shirt:'#27ae60', pants:'#1e5f3a', hair:'#3a2a1c', headRatio:0.25, shoulders:0.94, headWide:1.15, glasses:true, emoji:'🧮' } }
+    look:{ shirt:'#27ae60', pants:'#1e5f3a', hair:'#3a2a1c', headRatio:0.25, shoulders:0.94, headWide:1.15, glasses:true, emoji:'🧮' } },
+
+  /* Castells no ronda ni telegrafia: va a por ti y no para. */
+  castells: { id:'castells', name:'CASTELLS', mini:true, hp:820, speed:3.2, radius:0.36,
+    scaleX:0.58, scaleY:0.96, kind:'melee', dmg:18, cd:0.72, sight:26,
+    score:1600, tex:{w:130,h:214}, drop:1, persigue:true,
+    attack:'dash', dashEvery:2.6, dashTime:0.46, dashMul:3.4, chargeMin:2.4,
+    look:{ skin:'#e6bd96', shirt:'#3b4250', pants:'#2b2f38', hair:'#20180f',
+           headRatio:0.26, shoulders:0.64, suit:'#3b4250', dress:'#dce9f4', tie:'#7d2231',
+           beardFull:true, beardCol:'#241b13', angry:true } },
+
+  /* Angulo saca el arsenal: rafaga larga de pistola y el grito de rigor. */
+  angulo:   { id:'angulo', name:'ANGULO', mini:true, hp:980, speed:1.5, radius:0.48,
+    scaleX:0.78, scaleY:1.30, kind:'ranged', dmg:11, cd:2.6, projSpeed:8.4, sight:24,
+    score:1700, tex:{w:150,h:240}, drop:1, attack:'sicario',
+    burstN:7, burstGap:0.11, burstSpr:'bullet', keepMin:3.5, keepMax:11, grito:'sicariato',
+    look:{ skin:'#57351f', shirt:'#2f4739', pants:'#24352b', hair:'#0f0b08',
+           headRatio:0.21, shoulders:0.78, headWide:1.10, suit:'#2f4739', dress:'#f7f5ee',
+           tie:'#8f7020', tiePat:'dot', mustache:true, beard:1, angry:true,
+           weapon:'GLOCK', weapon2:'GLOCK' } }
 };
 /* ---------------------------------------------------------------------
    MINIJEFES NUEVOS - SOLO TEXTURA, TODAVIA NO ENTRAN EN PARTIDA.
@@ -1660,6 +1691,10 @@ const MINIBOSSES = {
    La cara y la complexion salen de las fotos de referencia; la ropa no, que
    son profesores y van de formal.
    --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   ERWIN sigue solo como textura: no entra en partida hasta decidir que
+   hace. Esta fuera de MINIBOSSES y de ALLDEF a proposito.
+   --------------------------------------------------------------------- */
 const MINI_PENDIENTES = {
   erwin:    { id:'erwin', name:'ERWIN', mini:true, hp:760, speed:1.7, radius:0.40,
     scaleX:0.66, scaleY:0.92, kind:'ranged', dmg:15, cd:1.25, projSpeed:6.6, sight:22,
@@ -1667,23 +1702,7 @@ const MINI_PENDIENTES = {
     look:{ skin:'#c0895a', shirt:'#5b4a3c', pants:'#3f342a', hair:'#1d1712',
            headRatio:0.27, shoulders:0.62, suit:'#5b4a3c', dress:'#f4f1e8',
            tie:'#2f6d4a', tiePat:'stripe', glasses:true, glassCol:'#5a5a5c', thinGlass:true,
-           mustache:true, hairPart:-1, greyTemples:true, angry:true } },
-
-  castells: { id:'castells', name:'CASTELLS', mini:true, hp:820, speed:2.4, radius:0.36,
-    scaleX:0.58, scaleY:0.96, kind:'melee', dmg:18, cd:0.9, sight:24,
-    score:1600, tex:{w:130,h:214}, drop:1, attack:'dash',
-    dashEvery:3.0, dashTime:0.5, dashMul:4.4, chargeMin:2.6, prefer:5.4,
-    look:{ skin:'#e6bd96', shirt:'#3b4250', pants:'#2b2f38', hair:'#20180f',
-           headRatio:0.26, shoulders:0.64, suit:'#3b4250', dress:'#dce9f4', tie:'#7d2231',
-           beardFull:true, beardCol:'#241b13', angry:true } },
-
-  angulo:   { id:'angulo', name:'ANGULO', mini:true, hp:980, speed:1.4, radius:0.52,
-    scaleX:0.78, scaleY:1.30, kind:'melee', dmg:21, cd:1.1, sight:20,
-    score:1700, tex:{w:150,h:240}, drop:1, attack:'charge',
-    chargeEvery:3.6, chargeTime:0.9, chargeMul:3.8, chargeMin:3.0, prefer:6.0,
-    look:{ skin:'#57351f', shirt:'#2f4739', pants:'#24352b', hair:'#0f0b08',
-           headRatio:0.21, shoulders:0.78, headWide:1.10, suit:'#2f4739', dress:'#f7f5ee',
-           tie:'#8f7020', tiePat:'dot', mustache:true, beard:1, angry:true } }
+           mustache:true, hairPart:-1, greyTemples:true, angry:true } }
 };
 
 /* Los cuatro jefes suben en fuerza sin excepcion: Roberto < Arturo < David
@@ -2600,6 +2619,19 @@ class Enemy {
     if (p && p.up && p.up.lifesteal && !p.down && (!NET.online || this.lastHitBy === G.meId))
       p.hp = Math.min(p.maxhp, p.hp + p.up.lifesteal);   /* solo cura a quien remata */
   }
+  grito() {                                           /* frase de combate, sin agobiar */
+    const def = this.def;
+    if (!def.grito) return;
+    if (G.time - (this.gritoT || -99) < 6.5) return;
+    this.gritoT = G.time;
+    const p = me();
+    if (p && dist2(this.x, this.y, p.x, p.y) > 26*26) return;
+    if (def.grito === 'sicariato') {
+      addMsg('🔫 ' + def.name + ': «¡SICARIATO, SICARIATO!»', '#ff8a5c');
+      killFeed('«¡SICARIATO, SICARIATO!»', '#ff8a5c');
+      Snd.at(this.x, this.y).sicariato();
+    }
+  }
   aimAt(t, vel, lead) {                               /* adelanta el tiro segun el tier */
     if (!t) return this.ang || 0;
     if (!lead) return Math.atan2(t.y-this.y, t.x-this.x);
@@ -2729,6 +2761,10 @@ class Enemy {
         }
         if (n) { Snd.tone(680, 0.2, 'sine', 0.05, 980); this.anim = 0.5; }
         this.cd = def.cd*rate;
+      } else if (def.attack === 'sicario') {             /* Angulo saca el arsenal */
+        this.burst = def.burstN || 6; this.burstT = 0;
+        this.cd = def.cd*rate; this.anim = 0.9;
+        this.grito();
       } else if (def.volley) {                           /* jefe que ademas abre fuego */
         const n = this.phase2 ? def.volley + 2 : def.volley;
         for (let i=0;i<n;i++)
@@ -2743,9 +2779,11 @@ class Enemy {
     if (this.burst > 0) {
       this.burstT -= dt;
       if (this.burstT <= 0) {
-        const spr = def.attack === 'burst3' ? 'bullet' : 'formula';
-        this.shoot(toA+rnd(-0.05,0.05), spr, def.projSpeed, this.dmg, {scale: spr==='bullet'?0.24:0.36});
-        this.burst--; this.burstT = 0.16;
+        const spr = def.burstSpr || (def.attack === 'burst3' ? 'bullet' : 'formula');
+        const disp = def.lead ? this.aimAt(t, def.projSpeed, def.lead) : toA;
+        this.shoot(disp+rnd(-0.06,0.06), spr, def.projSpeed, this.dmg, {scale: spr==='bullet'?0.24:0.36});
+        this.burst--; this.burstT = def.burstGap || 0.16;
+        this.anim = 0.18;
       }
     }
     if (this.tele > 0) {                                /* jefe cargando el ataque */
@@ -2780,7 +2818,7 @@ class Enemy {
 
     /* --------- desplazamiento --------- */
     let mvA = toA, move = true;
-    if ((this.boss || this.mini) && this.los) {
+    if ((this.boss || this.mini) && this.los && !def.persigue) {
       /* Un jefe no camina hacia ti sin parar: se planta para telegrafiar,
          embiste, y entre ataque y ataque ronda a su distancia preferida. */
       this.orbT = (this.orbT || 0) - dt;
@@ -3496,7 +3534,7 @@ function spawnRoomEnemies() {
   }
   if (G.room >= 3 && Math.random() < 0.22 && spots.length) {   /* minijefe aleatorio */
     const s = spots.splice((Math.random()*spots.length)|0, 1)[0];
-    const mb = pick(['ricky','miguelito','josue']);
+    const mb = pick(['ricky','miguelito','josue','castells','angulo']);
     const e = new Enemy(MINIBOSSES[mb], s.x, s.y, null);
     G.enemies.push(e); G.bossRef = e;
     addMsg('⚠ MINIJEFE: ' + MINIBOSSES[mb].name, '#ff8a5c');
