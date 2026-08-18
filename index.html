@@ -60,6 +60,14 @@
     flex-direction:column;gap:6px;align-items:center;pointer-events:none}
   .tmsg{background:rgba(10,8,12,.85);border-left:4px solid #ffd45e;padding:7px 14px;border-radius:5px;font-size:15px}
   .warn{color:#ff8a7a;font-size:13px;text-align:center}
+  .hairgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;width:100%;
+    max-height:236px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:8px}
+  .hitem{background:#14110e;border:2px solid #5a4c33;border-radius:6px;cursor:pointer;padding:2px 0 3px;
+    display:flex;flex-direction:column;align-items:center;gap:1px;transition:.1s}
+  .hitem:hover{border-color:#ffd45e}
+  .hitem.sel{border-color:#ffd45e;background:#2c2415}
+  .hitem canvas{display:block;width:56px;height:44px;image-rendering:auto}
+  .hitem span{font-size:9px;color:#c9b48a;letter-spacing:.3px;text-align:center;line-height:1.05}
 </style>
 <!-- CDN ligera de PeerJS para el canal de datos P2P (WebRTC) -->
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -108,6 +116,25 @@
         <div class="col" id="fit-list" style="width:100%"></div>
         <canvas id="char-preview" width="150" height="240"
                 style="width:150px;height:240px;image-rendering:auto"></canvas>
+      </div>
+    </div>
+    <div class="row" style="align-items:flex-start;gap:22px">
+      <div class="col" style="flex:1.3;min-width:300px">
+        <div class="muted">PEINADO · 20 estilos</div>
+        <div class="hairgrid" id="hair-list"></div>
+      </div>
+      <div class="col" style="flex:1;min-width:250px">
+        <div class="muted">COLOR DE PELO · cualquier color</div>
+        <canvas id="hair-hue" width="300" height="26"
+                style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:6px;cursor:crosshair"></canvas>
+        <canvas id="hair-field" width="300" height="120"
+                style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
+        <div class="row" style="justify-content:flex-start">
+          <span class="muted">HEX</span>
+          <input id="hair-hex" maxlength="7" value="#2a1f18" style="width:120px;font-family:'Courier New',monospace">
+          <div id="hair-dot" style="width:34px;height:34px;border-radius:6px;border:2px solid #fff;background:#2a1f18"></div>
+        </div>
+        <div class="row" id="hair-presets" style="justify-content:flex-start;gap:6px"></div>
       </div>
     </div>
     <div class="row">
@@ -272,10 +299,15 @@ const OUTFITS = [
     uniform:'tee', cuff:['#1b2352','#7d2231'] }
 ];
 /* preferencias de personaje: null = nunca tocado -> aleatorio como antes */
-const PREFS = { skin:null, fit:null };
+const PREFS = { skin:null, fit:null, hair:null, hairCol:null };
 try {
   const c = JSON.parse(localStorage.getItem('torremar.char') || 'null');
-  if (c) { PREFS.skin = c.skin || null; PREFS.fit = (c.fit === 0 || c.fit === 1) ? c.fit : null; }
+  if (c) {
+    PREFS.skin = c.skin || null;
+    PREFS.fit = (c.fit === 0 || c.fit === 1) ? c.fit : null;
+    PREFS.hair = (typeof c.hair === 'number') ? c.hair : null;
+    PREFS.hairCol = c.hairCol || null;
+  }
 } catch (e) {}
 function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
 /* marcas personales de la partida */
@@ -296,6 +328,10 @@ function recordRun(room, kills, time) {
 }
 const mySkin = () => PREFS.skin || pick(SKINS);
 const myFit  = () => (PREFS.fit === null ? (Math.random() < 0.5 ? 0 : 1) : PREFS.fit);
+/* pelo: si nunca se ha tocado, se sortea estilo y color natural */
+const HAIR_NAT = ['#1a1208','#2a1f18','#3d2a17','#5a3a1e','#7a5228','#a06a33','#c99a4e','#6b6b6b','#d8d4cc'];
+const myHair    = () => (PREFS.hair === null ? ((Math.random()*20)|0) : PREFS.hair);
+const myHairCol = () => PREFS.hairCol || pick(HAIR_NAT);
 
 /* ---- color de piel: solo tonos calidos, nada de azules ni morados ---- */
 function hexToHsl(hex) {
@@ -1012,6 +1048,249 @@ function outlined(c, W, H, fn, thick) {
 const SWING = [0,1,0,-1];
 
 /* -------- humanoide parametrico: sirve para jugadores y enemigos ----- */
+/* ---------------------------------------------------------------------
+   Veinte peinados dibujados a mano con Canvas. Cada uno recibe la geometria
+   de la cabeza (centro, radios) y el color elegido, y se apana solo: unos
+   se apoyan en el casquete basico y otros lo ignoran del todo.
+   --------------------------------------------------------------------- */
+function hairCap(c, g, alto, ancho) {                   /* casquete basico */
+  const a = alto === undefined ? 0.62 : alto, w = ancho === undefined ? 1.02 : ancho;
+  c.beginPath(); c.ellipse(g.cx, g.cy - g.ry*0.36, g.rx*w, g.ry*a, 0, Math.PI, TAU); c.fill();
+  c.fillRect(g.cx - g.rx*w, g.cy - g.ry*0.42, g.rx*w*2, g.ry*0.22);
+}
+function hairClip(c, g, fn) {                           /* recorta al casquete */
+  c.save();
+  c.beginPath();
+  c.ellipse(g.cx, g.cy - g.ry*0.36, g.rx*1.02, g.ry*0.62, 0, Math.PI, TAU);
+  c.rect(g.cx - g.rx*1.02, g.cy - g.ry*0.42, g.rx*2.04, g.ry*0.22);
+  c.clip();
+  fn();
+  c.restore();
+}
+function hairSides(c, g, largo, ancho) {                /* mechones que caen al lado */
+  const w = g.rx*(ancho || 0.30);
+  for (const sx of [-1, 1]) {
+    c.beginPath();
+    c.moveTo(g.cx + sx*g.rx*0.98, g.cy - g.ry*0.30);
+    c.quadraticCurveTo(g.cx + sx*g.rx*1.22, g.cy + g.ry*largo*0.5,
+                       g.cx + sx*g.rx*(1.02 - 0.10), g.cy + g.ry*largo);
+    c.lineTo(g.cx + sx*(g.rx*0.98 - w), g.cy + g.ry*largo*0.92);
+    c.quadraticCurveTo(g.cx + sx*g.rx*0.86, g.cy + g.ry*largo*0.4,
+                       g.cx + sx*g.rx*0.72, g.cy - g.ry*0.30);
+    c.closePath(); c.fill();
+  }
+}
+const HAIRS = [
+  { id:'corto', name:'CORTO CLÁSICO', draw:(c,g)=>{ c.fillStyle=g.col; hairCap(c,g); } },
+
+  { id:'rapado', name:'RAPADO', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.46,0.98);
+      c.fillStyle=g.dark; hairClip(c,g,()=>{
+        for(let i=0;i<14;i++) ellipse(c, g.cx+rndSeed(i)*g.rx*0.9, g.cy-g.ry*(0.30+rndSeed(i+7)*0.45),
+                                     g.rx*0.07, g.ry*0.07, g.dark); }); } },
+
+  { id:'cero', name:'AL CERO', draw:(c,g)=>{
+      c.globalAlpha=0.55; c.fillStyle=g.col; hairCap(c,g,0.38,0.96); c.globalAlpha=1; } },
+
+  { id:'calvo', name:'CALVO', draw:(c,g)=>{
+      c.fillStyle=g.col;                                /* solo queda pelo en las sienes */
+      for (const sx of [-1, 1]) {
+        c.beginPath();
+        c.ellipse(g.cx + sx*g.rx*0.84, g.cy - g.ry*0.20, g.rx*0.20, g.ry*0.40, 0, 0, TAU);
+        c.fill();
+      }
+      c.fillStyle=g.dark;                               /* raya de la nuca por detras */
+      c.beginPath();
+      c.ellipse(g.cx, g.cy - g.ry*0.52, g.rx*0.88, g.ry*0.16, 0, Math.PI, TAU);
+      c.fill(); } },
+
+  { id:'entradas', name:'ENTRADAS', draw:(c,g)=>{
+      c.fillStyle=g.col;
+      c.beginPath();                                    /* casquete menos los dos golfos */
+      c.ellipse(g.cx, g.cy-g.ry*0.36, g.rx*1.00, g.ry*0.54, 0, Math.PI, TAU);
+      c.rect(g.cx-g.rx*1.00, g.cy-g.ry*0.42, g.rx*2.00, g.ry*0.18);
+      c.ellipse(g.cx-g.rx*0.60, g.cy-g.ry*0.44, g.rx*0.32, g.ry*0.26, 0, 0, TAU);
+      c.ellipse(g.cx+g.rx*0.60, g.cy-g.ry*0.44, g.rx*0.32, g.ry*0.26, 0, 0, TAU);
+      c.fill('evenodd'); } },
+
+  { id:'raya', name:'RAYA AL LADO', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g);
+      hairClip(c,g,()=>{ c.fillStyle=g.dark;
+        c.fillRect(g.cx-g.rx*0.52, g.cy-g.ry*1.05, Math.max(1,g.rx*0.10), g.ry*0.90); });
+      c.fillStyle=g.light;
+      c.beginPath(); c.ellipse(g.cx-g.rx*0.28, g.cy-g.ry*0.62, g.rx*0.52, g.ry*0.24, 0, Math.PI, TAU); c.fill(); } },
+
+  { id:'atras', name:'HACIA ATRÁS', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.70,1.00);
+      c.fillStyle=g.dark;
+      for(let i=0;i<4;i++)
+        c.fillRect(g.cx-g.rx*(0.86-i*0.02), g.cy-g.ry*(0.92-i*0.13), g.rx*(1.72-i*0.06), g.ry*0.045);
+      c.fillStyle=g.light;
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.82, g.rx*0.96, g.ry*0.26, 0, Math.PI, TAU); c.fill(); } },
+
+  { id:'tupe', name:'TUPÉ', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.58,1.00);
+      c.beginPath();                                    /* copete alto hacia delante */
+      c.moveTo(g.cx-g.rx*0.86, g.cy-g.ry*0.62);
+      c.quadraticCurveTo(g.cx-g.rx*0.30, g.cy-g.alto(1.55), g.cx+g.rx*0.55, g.cy-g.alto(1.10));
+      c.quadraticCurveTo(g.cx+g.rx*0.95, g.cy-g.alto(0.92), g.cx+g.rx*0.92, g.cy-g.ry*0.50);
+      c.closePath(); c.fill();
+      c.fillStyle=g.light;
+      c.beginPath();
+      c.moveTo(g.cx-g.rx*0.50, g.cy-g.alto(0.85));
+      c.quadraticCurveTo(g.cx-g.rx*0.05, g.cy-g.alto(1.32), g.cx+g.rx*0.45, g.cy-g.alto(1.00));
+      c.quadraticCurveTo(g.cx-g.rx*0.02, g.cy-g.alto(1.10), g.cx-g.rx*0.50, g.cy-g.alto(0.85));
+      c.fill(); } },
+
+  { id:'flequillo', name:'FLEQUILLO', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.60,1.02);
+      c.beginPath();                                    /* cortina sobre la frente */
+      c.moveTo(g.cx-g.rx*1.00, g.cy-g.ry*0.42);
+      for(let i=0;i<=6;i++){
+        const t=i/6, x=g.cx+g.rx*(-1.00+t*2.00);
+        c.lineTo(x, g.cy-g.ry*(0.42 - (i%2?0.30:0.16)));
+      }
+      c.lineTo(g.cx+g.rx*1.00, g.cy-g.ry*0.42);
+      c.closePath(); c.fill(); } },
+
+  { id:'tazon', name:'CORTE TAZÓN', draw:(c,g)=>{
+      c.fillStyle=g.col;
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.22, g.rx*1.10, g.ry*0.82, 0, Math.PI, TAU); c.fill();
+      c.fillRect(g.cx-g.rx*1.10, g.cy-g.ry*0.28, g.rx*2.20, g.ry*0.26); } },
+
+  { id:'afro', name:'AFRO', draw:(c,g)=>{
+      c.save();
+      c.beginPath();                                    /* anillo: la cara queda libre */
+      c.ellipse(g.cx, g.cy-g.ry*0.44, g.rx*1.36, g.ry*1.06, 0, 0, TAU);
+      c.ellipse(g.cx, g.cy+g.ry*0.14, g.rx*0.84, g.ry*0.80, 0, 0, TAU);
+      c.clip('evenodd');
+      c.fillStyle=g.col;
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.ry*0.44, g.rx*1.36, g.ry*1.06, 0, 0, TAU); c.fill();
+      for(let i=0;i<18;i++){                            /* volumen a base de rizos */
+        const a=i*TAU/18, r=g.rx*(0.92+rndSeed(i)*0.34);
+        ellipse(c, g.cx+Math.cos(a)*r, g.cy-g.ry*0.44+Math.sin(a)*g.ry*0.74,
+                g.rx*0.17, g.ry*0.14, i%2 ? g.dark : g.light);
+      }
+      c.restore(); } },
+
+  { id:'rizos', name:'RIZOS', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.72,1.06);
+      for(let i=0;i<11;i++){
+        const t=i/10, x=g.cx+g.rx*(-1.02+t*2.04);
+        ellipse(c, x, g.cy-g.ry*(0.72+rndSeed(i)*0.30), g.rx*0.22, g.ry*0.20, i%2?g.light:g.col);
+      }
+      for(const sx of [-1,1])
+        for(let i=0;i<3;i++)
+          ellipse(c, g.cx+sx*g.rx*(0.94+rndSeed(i)*0.12), g.cy-g.ry*(0.28-i*0.22),
+                  g.rx*0.19, g.ry*0.17, i%2?g.col:g.dark); } },
+
+  { id:'trenzas', name:'TRENZAS', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.56,1.00);
+      c.strokeStyle=g.dark; c.lineWidth=Math.max(1,g.rx*0.10); c.lineCap='round';
+      for(let i=0;i<7;i++){
+        const x=g.cx+g.rx*(-0.82+i*0.273);
+        c.beginPath();
+        c.moveTo(x, g.cy-g.ry*0.94);
+        c.quadraticCurveTo(x*0.5+g.cx*0.5, g.cy-g.ry*0.60, x, g.cy-g.ry*0.30);
+        c.stroke();
+      }
+      c.lineCap='butt'; } },
+
+  { id:'rastas', name:'RASTAS', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.58,1.00);
+      c.strokeStyle=g.col; c.lineCap='round';
+      c.lineWidth=Math.max(1.5,g.rx*0.16);
+      for(let i=0;i<8;i++){
+        const sx = i<4 ? -1 : 1, k = i%4;
+        const x0 = g.cx + sx*g.rx*(0.62+k*0.14);
+        c.beginPath();
+        c.moveTo(x0, g.cy-g.ry*0.62);
+        c.quadraticCurveTo(x0+sx*g.rx*0.24, g.cy+g.ry*0.30,
+                           x0+sx*g.rx*0.12, g.cy+g.ry*(0.95+k*0.14));
+        c.stroke();
+      }
+      c.lineCap='butt';
+      c.fillStyle=g.dark;
+      for(let i=0;i<10;i++) ellipse(c, g.cx+rndSeed(i)*g.rx*0.85, g.cy-g.ry*(0.55+rndSeed(i+3)*0.35),
+                                    g.rx*0.09, g.ry*0.08, g.dark); } },
+
+  { id:'melena', name:'MELENA', draw:(c,g)=>{
+      c.fillStyle=g.col;
+      hairSides(c, g, 1.55, 0.34);
+      hairCap(c,g,0.66,1.04);
+      c.fillStyle=g.light;
+      c.beginPath(); c.ellipse(g.cx-g.rx*0.34, g.cy-g.ry*0.66, g.rx*0.46, g.ry*0.20, 0, Math.PI, TAU); c.fill(); } },
+
+  { id:'coleta', name:'COLETA', draw:(c,g)=>{
+      c.fillStyle=g.col;
+      c.beginPath();                                    /* cola detras, a un lado */
+      c.moveTo(g.cx+g.rx*0.90, g.cy-g.ry*0.50);
+      c.quadraticCurveTo(g.cx+g.rx*1.55, g.cy+g.ry*0.10, g.cx+g.rx*1.20, g.cy+g.ry*1.15);
+      c.quadraticCurveTo(g.cx+g.rx*1.00, g.cy+g.ry*0.30, g.cx+g.rx*0.78, g.cy-g.ry*0.30);
+      c.closePath(); c.fill();
+      hairCap(c,g,0.62,1.02);
+      c.fillStyle=g.dark;
+      ellipse(c, g.cx+g.rx*0.92, g.cy-g.ry*0.42, g.rx*0.16, g.ry*0.12, g.dark); } },
+
+  { id:'mono', name:'MOÑO', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.60,1.00);
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.alto(1.02), g.rx*0.42, g.ry*0.34, 0, 0, TAU); c.fill();
+      c.fillStyle=g.dark;
+      c.beginPath(); c.ellipse(g.cx, g.cy-g.alto(0.80), g.rx*0.30, g.ry*0.10, 0, 0, TAU); c.fill(); } },
+
+  { id:'mohicano', name:'MOHICANO', draw:(c,g)=>{
+      c.fillStyle=g.dark; hairCap(c,g,0.42,0.98);        /* laterales rapados */
+      c.fillStyle=g.col;
+      c.beginPath();
+      c.moveTo(g.cx-g.rx*0.34, g.cy-g.ry*0.40);
+      c.quadraticCurveTo(g.cx-g.rx*0.30, g.cy-g.alto(1.20), g.cx-g.rx*0.10, g.cy-g.alto(1.62));
+      c.lineTo(g.cx+g.rx*0.10, g.cy-g.alto(1.62));
+      c.quadraticCurveTo(g.cx+g.rx*0.30, g.cy-g.alto(1.20), g.cx+g.rx*0.34, g.cy-g.ry*0.40);
+      c.closePath(); c.fill();
+      c.fillStyle=g.light;                              /* puntas de la cresta */
+      for(let i=0;i<4;i++){
+        const x=g.cx+g.rx*(-0.18+i*0.12);
+        c.beginPath();
+        c.moveTo(x-g.rx*0.05, g.cy-g.alto(1.30));
+        c.lineTo(x, g.cy-g.alto(1.72));
+        c.lineTo(x+g.rx*0.05, g.cy-g.alto(1.30));
+        c.closePath(); c.fill();
+      } } },
+
+  { id:'puntas', name:'PUNTAS', draw:(c,g)=>{
+      c.fillStyle=g.col; hairCap(c,g,0.58,1.00);
+      for(let i=0;i<9;i++){
+        const t=i/8, x=g.cx+g.rx*(-0.92+t*1.84);
+        const cima=g.alto(0.72+0.42+((i%3)===1?0.34:0.14));
+        c.beginPath();
+        c.moveTo(x-g.rx*0.11, g.cy-g.ry*0.72);
+        c.lineTo(x, g.cy-cima);
+        c.lineTo(x+g.rx*0.11, g.cy-g.ry*0.72);
+        c.closePath(); c.fill();
+      } } },
+
+  { id:'undercut', name:'UNDERCUT', draw:(c,g)=>{
+      c.fillStyle=g.dark; hairCap(c,g,0.50,1.00);
+      c.fillStyle=g.col;
+      c.beginPath();
+      c.ellipse(g.cx, g.cy-g.ry*0.62, g.rx*0.86, g.ry*0.58, 0, Math.PI, TAU);
+      c.fill();
+      c.fillRect(g.cx-g.rx*0.86, g.cy-g.ry*0.70, g.rx*1.72, g.ry*0.16);
+      c.fillStyle=g.light;
+      c.beginPath(); c.ellipse(g.cx+g.rx*0.20, g.cy-g.ry*0.86, g.rx*0.46, g.ry*0.18, 0, Math.PI, TAU); c.fill(); } }
+];
+/* ruido estable: los peinados no deben cambiar entre fotogramas */
+function rndSeed(i) { const v = Math.sin(i*127.1 + 311.7)*43758.5453; return (v - Math.floor(v))*2 - 1; }
+function drawHairStyle(c, idx, cx, cy, rx, ry, col) {
+  const h = HAIRS[clamp(idx|0, 0, HAIRS.length-1)];
+  if (!h) return;
+  /* up = cuanto se puede subir sin salirse del lienzo: los peinados altos
+     (cresta, tupe, mono) se recortan solos en sprites con poca cabecera */
+  const g = { cx, cy, rx, ry, col, up: Math.max(ry*0.6, cy - 1),
+              dark: shade(col, 0.68), light: shade(col, 1.28) };
+  g.alto = (k) => Math.min(ry*k, g.up*0.96);            /* altura util sobre el centro */
+  c.save(); h.draw(c, g); c.restore();
+}
 function figure(c, W, H, o) {
   const cx = W/2;
   const headH = H*o.headRatio, headRY = headH*0.46;
@@ -1064,7 +1343,9 @@ function figure(c, W, H, o) {
   }
   ellipse(c, cx-headRX*0.97, headCY+headRY*0.05, headRX*0.14, headRY*0.20, skinD);
   ellipse(c, cx+headRX*0.97, headCY+headRY*0.05, headRX*0.14, headRY*0.20, skinD);
-  if (o.hair) {
+  if (o.hairStyle !== undefined && o.hairStyle !== null) {
+    drawHairStyle(c, o.hairStyle, cx, headCY, headRX, headRY, o.hair || '#2a1f18');
+  } else if (o.hair) {
     c.fillStyle = o.hair;
     if (o.bald) {
       c.beginPath();
@@ -1715,12 +1996,14 @@ function spriteOf(def, state, frame, vr) {
   });
 }
 /* jugadores: piel variable, ropa SIEMPRE blanca */
-function playerSprite(skin, fit, weaponKey, state, frame, down) {
+function playerSprite(skin, fit, weaponKey, state, frame, down, hair, hairCol) {
   const o = OUTFITS[fit] || OUTFITS[0];
-  const key = 'P|'+skin+'|'+o.id+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0);
+  const hs = clamp((hair === undefined || hair === null) ? 0 : hair|0, 0, HAIRS.length-1);
+  const hc = hairCol || '#2a1f18';
+  const key = 'P|'+skin+'|'+o.id+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0)+'|'+hs+'|'+hc;
   return sprite(key, 128, 208, (c,W,H) => {
     if (down) { corpse(c,W,H,{shirt:o.shirt, skin:skin}); return; }
-    figure(c,W,H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:'#2a1f18',
+    figure(c,W,H,{ skin:skin, shirt:o.shirt, pants:o.pants, hair:hc, hairStyle:hs,
       headRatio:0.26, shoulders:0.66, swing: state==='walk'?SWING[frame&3]:0,
       attack: state==='attack', weapon: weaponKey,
       uniform: o.uniform, sleeve: 0.42, cuff: o.cuff });
@@ -1945,9 +2228,12 @@ function roomEnemyCount() {
 }
 
 /* ------------------------------ jugador ------------------------------ */
-function makePlayer(id, nick, skin, order, fit) {
+function makePlayer(id, nick, skin, order, fit, hair, hairCol) {
   return {
-    id, nick, skin, order, fit: fit|0, x:MAP.spawn?MAP.spawn.x:5, y:MAP.spawn?MAP.spawn.y:5, ang:-Math.PI/2,
+    id, nick, skin, order, fit: fit|0,
+    hair: (hair === undefined || hair === null) ? 0 : (hair|0),
+    hairCol: hairCol || '#2a1f18',
+    x:MAP.spawn?MAP.spawn.x:5, y:MAP.spawn?MAP.spawn.y:5, ang:-Math.PI/2,
     hp:100, maxhp:100, armor:0, down:false, downT:0, reviveT:0, alive:true,
     weapon:1, walk:0, anim:0, radius:0.28, isLocal:false, lastSeen:0,
     tx:0, ty:0, tang:0                                   /* interpolacion de red */
@@ -3271,7 +3557,7 @@ const NET = {
     this.peer.on('open', () => {
       this.online = true;
       G.isHost = true; G.meId = 'HOST'; G.hostId = 'HOST';
-      const p = makePlayer('HOST', nick, mySkin(), 1, myFit());
+      const p = makePlayer('HOST', nick, mySkin(), 1, myFit(), myHair(), myHairCol());
       G.players.clear(); G.players.set('HOST', p);
       onReady(code);
     });
@@ -3285,7 +3571,9 @@ const NET = {
         const md = conn.metadata || {};
         const skin = (typeof md.skin === 'string' && warmSkin(md.skin)) ? warmSkin(md.skin).hex : pick(SKINS);
         const fit = (md.fit === 0 || md.fit === 1) ? md.fit : (Math.random()<0.5?0:1);
-        const pl = makePlayer(id, md.nick ? String(md.nick).slice(0,16) : 'JUGADOR', skin, order, fit);
+        const hair = (typeof md.hair === 'number') ? clamp(md.hair|0, 0, HAIRS.length-1) : ((Math.random()*HAIRS.length)|0);
+        const hairCol = /^#[0-9a-f]{6}$/i.test(md.hairCol || '') ? md.hairCol : pick(HAIR_NAT);
+        const pl = makePlayer(id, md.nick ? String(md.nick).slice(0,16) : 'JUGADOR', skin, order, fit, hair, hairCol);
         G.players.set(id, pl);
         conn.send(JSON.stringify({ t:'welcome', you:id, host:'HOST', players:serializePlayers(), diff:G.diff, ff:G.ff }));
         this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
@@ -3309,7 +3597,8 @@ const NET = {
     this.isHost = false;
     this.peer.on('open', () => {
       const conn = this.peer.connect('torremar-' + code.toUpperCase(),
-        { metadata:{ nick, skin: PREFS.skin || null, fit: PREFS.fit }, reliable:true });
+        { metadata:{ nick, skin: PREFS.skin || null, fit: PREFS.fit,
+                     hair: PREFS.hair, hairCol: PREFS.hairCol || null }, reliable:true });
       const timer = setTimeout(() => { if (!this.online) onErr('No se pudo conectar con la sala ' + code); }, 9000);
       conn.on('open', () => {
         clearTimeout(timer);
@@ -3342,6 +3631,7 @@ const NET = {
 function serializePlayers() {
   const out = [];
   for (const p of G.players.values()) out.push({ id:p.id, nick:p.nick, skin:p.skin, fit:p.fit|0,
+    hair:p.hair|0, hairCol:p.hairCol || '#2a1f18',
     order:p.order, hp:p.hp, maxhp:p.maxhp, down:p.down });
   return out;
 }
@@ -3426,7 +3716,7 @@ function onNet(from, m) {
       G.meId = m.you; G.hostId = m.host; G.diff = m.diff; G.ff = m.ff;
       G.players.clear();
       for (const s of m.players) {
-        const p = makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0);
+        const p = makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol);
         p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down;
         G.players.set(s.id, p);
       }
@@ -3441,8 +3731,9 @@ function onNet(from, m) {
       const old = new Map(G.players);
       G.players.clear();
       for (const s of m.players) {
-        let p = old.get(s.id) || makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0);
+        let p = old.get(s.id) || makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol);
         p.nick = s.nick; p.skin = s.skin; p.order = s.order; p.fit = s.fit|0;
+        p.hair = s.hair|0; p.hairCol = s.hairCol || p.hairCol || '#2a1f18';
         if (!p.isLocal) { p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down; }
         G.players.set(s.id, p);
       }
@@ -3734,7 +4025,7 @@ function collectSprites() {
     if (pl.isLocal) continue;
     const wk = WEAPONS[pl.weapon] ? WEAPONS[pl.weapon].key : 'GLOCK';
     const st = pl.down ? 'dead' : (pl.anim>0 ? 'attack' : 'walk');
-    const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down);
+    const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down, pl.hair, pl.hairCol);
     list.push({ x:pl.x, y:pl.y, tex, sx:pl.down?0.66:0.44, sy:pl.down?0.24:0.72,
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
   }
@@ -4647,6 +4938,90 @@ function renderKeys() {
 }
 /* ------------------------- pantalla de personaje --------------------- */
 let charSkin = PREFS.skin || '#e8bd93', charFit = (PREFS.fit === null ? 0 : PREFS.fit);
+let charHair = (PREFS.hair === null ? 0 : PREFS.hair);
+let charHairCol = PREFS.hairCol || '#2a1f18';
+let charHue = 28;                                       /* matiz activo del selector */
+/* ---------- selector de color de pelo: matiz completo ---------- */
+function drawHairHue() {
+  const cn = $('hair-hue'), c = cn.getContext('2d'), W = cn.width, H = cn.height;
+  for (let x = 0; x < W; x++) {
+    c.fillStyle = hslToHex(x/W*360, 1, 0.5);
+    c.fillRect(x, 0, 1, H);
+  }
+  const mx = charHue/360*W;                             /* marca del matiz elegido */
+  c.strokeStyle = '#fff'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(mx, 0); c.lineTo(mx, H); c.stroke();
+  c.strokeStyle = '#000'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(mx-2, 0); c.lineTo(mx-2, H); c.moveTo(mx+2, 0); c.lineTo(mx+2, H); c.stroke();
+}
+function drawHairField() {                              /* saturacion x luminosidad */
+  const cn = $('hair-field'), c = cn.getContext('2d'), W = cn.width, H = cn.height;
+  for (let y = 0; y < H; y += 2)
+    for (let x = 0; x < W; x += 3) {
+      c.fillStyle = hslToHex(charHue, x/(W-1), 0.96 - (y/(H-1))*0.92);
+      c.fillRect(x, y, 3, 2);
+    }
+  c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 1; c.strokeRect(0.5, 0.5, W-1, H-1);
+}
+function hairFieldColor(u, v) { return hslToHex(charHue, u, 0.96 - v*0.92); }
+/* del hex al matiz, para que el selector caiga donde toca al abrir */
+function hueOf(hex) {
+  const [r,g,b] = hex2rgb(hex).map(v=>v/255);
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b), d = mx-mn;
+  if (d < 0.001) return charHue;
+  let h;
+  if (mx === r) h = ((g-b)/d) % 6;
+  else if (mx === g) h = (b-r)/d + 2;
+  else h = (r-g)/d + 4;
+  h *= 60; return ((h % 360) + 360) % 360;
+}
+function renderHairUI() {
+  $('hair-hex').value = charHairCol;
+  $('hair-dot').style.background = charHairCol;
+  drawHairHue(); drawHairField();
+  const pl = $('hair-presets');
+  if (!pl.dataset.done) {
+    for (const col of HAIR_NAT.concat(['#c02a2a','#2a6fc0','#2fa05a','#9a3fc0','#e05fa0'])) {
+      const d = document.createElement('div');
+      d.style.cssText = 'width:24px;height:24px;border-radius:5px;border:2px solid #6b5a3c;cursor:pointer;background:'+col;
+      d.onclick = () => { charHairCol = col; charHue = hueOf(col); renderCharUI(); };
+      pl.appendChild(d);
+    }
+    pl.dataset.done = '1';
+  }
+  const hl = $('hair-list');
+  if (!hl.dataset.done) {
+    HAIRS.forEach((h, i) => {
+      const it = document.createElement('div');
+      it.className = 'hitem';
+      it.dataset.i = i;
+      const cv = document.createElement('canvas'); cv.width = 112; cv.height = 88;
+      const lb = document.createElement('span'); lb.textContent = h.name;
+      it.appendChild(cv); it.appendChild(lb);
+      it.onclick = () => { charHair = i; renderCharUI(); };
+      hl.appendChild(it);
+    });
+    hl.dataset.done = '1';
+  }
+  /* cada casilla dibuja la cabeza con su peinado y el color actual */
+  for (const it of hl.children) {
+    const i = +it.dataset.i;
+    it.classList.toggle('sel', i === charHair);
+    const cv = it.firstChild, cc = cv.getContext('2d');
+    cc.clearRect(0,0,cv.width,cv.height);
+    const fondo = cc.createLinearGradient(0,0,0,cv.height);   /* fondo claro: el pelo se ve */
+    fondo.addColorStop(0, i === charHair ? '#4a4030' : '#3a3a42');
+    fondo.addColorStop(1, i === charHair ? '#2a2418' : '#23232a');
+    cc.fillStyle = fondo; cc.fillRect(0,0,cv.width,cv.height);
+    const cx = cv.width/2, cy = cv.height*0.66, rx = cv.width*0.27, ry = cv.height*0.33;
+    ellipse(cc, cx, cy, rx, ry, charSkin);
+    ellipse(cc, cx-rx*0.97, cy+ry*0.05, rx*0.14, ry*0.20, shade(charSkin, 0.72));
+    ellipse(cc, cx+rx*0.97, cy+ry*0.05, rx*0.14, ry*0.20, shade(charSkin, 0.72));
+    ellipse(cc, cx-rx*0.40, cy+ry*0.06, rx*0.13, ry*0.11, '#f7f7f2');
+    ellipse(cc, cx+rx*0.40, cy+ry*0.06, rx*0.13, ry*0.11, '#f7f7f2');
+    drawHairStyle(cc, i, cx, cy, rx, ry, charHairCol);
+  }
+}
 function skinFieldColor(u, v) {                        /* u: matiz calido, v: claridad */
   const h = 11 + u * 33;                               /* 11º a 44º: rojizo a ambar */
   const l = 0.965 - v * 0.90;
@@ -4695,11 +5070,16 @@ function renderCharUI(note) {
   const pv = $('char-preview'), pc = pv.getContext('2d');
   pc.clearRect(0,0,pv.width,pv.height);
   pc.imageSmoothingEnabled = true;
-  pc.drawImage(playerSprite(charSkin, charFit, 'GLOCK', 'walk', 0, false), 0, 0, pv.width, pv.height);
+  pc.drawImage(playerSprite(charSkin, charFit, 'GLOCK', 'walk', 0, false, charHair, charHairCol),
+               0, 0, pv.width, pv.height);
+  renderHairUI();
 }
 function openChar() {
   charSkin = PREFS.skin || charSkin;
   if (PREFS.fit !== null) charFit = PREFS.fit;
+  if (PREFS.hair !== null) charHair = PREFS.hair;
+  charHairCol = PREFS.hairCol || charHairCol;
+  charHue = hueOf(charHairCol);
   drawSkinField();
   renderCharUI();
   showScreen('scr-char');
@@ -4817,7 +5197,7 @@ function soloRun() {
   NET.online = false; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
   G.players.clear();
   const nick = ($('nick').value || 'ALIRO MERA').slice(0,16).toUpperCase();
-  const p = makePlayer('SOLO', nick, mySkin(), 1, myFit());
+  const p = makePlayer('SOLO', nick, mySkin(), 1, myFit(), myHair(), myHairCol());
   G.players.set('SOLO', p);
   G.diff = clamp(parseInt($('sel-solo-diff').value,10)||0, 0, DIFFS.length-1);
   G.ff = 0; G.nPlayers = 1;
@@ -4892,14 +5272,40 @@ $('btn-join-go').onclick = () => {
 $('btn-join-back').onclick = () => showScreen('scr-main');
 $('btn-char').onclick = () => openChar();
 $('btn-char-save').onclick = () => {
-  PREFS.skin = charSkin; PREFS.fit = charFit; saveChar();
+  PREFS.skin = charSkin; PREFS.fit = charFit;
+  PREFS.hair = charHair; PREFS.hairCol = charHairCol;
+  saveChar();
   showScreen('scr-main');
 };
 $('btn-char-random').onclick = () => {
-  PREFS.skin = null; PREFS.fit = null; saveChar();
+  PREFS.skin = null; PREFS.fit = null; PREFS.hair = null; PREFS.hairCol = null; saveChar();
   charSkin = pick(SKINS); charFit = (Math.random()<0.5?0:1);
+  charHair = (Math.random()*HAIRS.length)|0; charHairCol = pick(HAIR_NAT);
+  charHue = hueOf(charHairCol);
   renderCharUI('Vuelves al sorteo automático al entrar en partida.');
 };
+/* ---------- clics del selector de pelo ---------- */
+let hairSat = 0.55, hairVal = 0.72;                     /* punto elegido en el cuadro */
+$('hair-hue').addEventListener('mousedown', (ev) => {
+  const cn = $('hair-hue'), r = cn.getBoundingClientRect();
+  charHue = clamp((ev.clientX - r.left)/r.width, 0, 1) * 360;
+  charHairCol = hairFieldColor(hairSat, hairVal);
+  renderCharUI();
+});
+$('hair-field').addEventListener('mousedown', (ev) => {
+  const cn = $('hair-field'), r = cn.getBoundingClientRect();
+  hairSat = clamp((ev.clientX - r.left)/r.width, 0, 1);
+  hairVal = clamp((ev.clientY - r.top)/r.height, 0, 1);
+  charHairCol = hairFieldColor(hairSat, hairVal);
+  renderCharUI();
+});
+$('hair-hex').addEventListener('change', () => {
+  const v = $('hair-hex').value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(v)) { renderCharUI(); return; }
+  charHairCol = v.toLowerCase();
+  charHue = hueOf(charHairCol);
+  renderCharUI();
+});
 $('skin-field').addEventListener('mousedown', (ev) => {
   const cn = $('skin-field'), r = cn.getBoundingClientRect();
   const u = clamp((ev.clientX - r.left)/r.width, 0, 1), v = clamp((ev.clientY - r.top)/r.height, 0, 1);
