@@ -60,8 +60,42 @@
     flex-direction:column;gap:6px;align-items:center;pointer-events:none}
   .tmsg{background:rgba(10,8,12,.85);border-left:4px solid #ffd45e;padding:7px 14px;border-radius:5px;font-size:15px}
   .warn{color:#ff8a7a;font-size:13px;text-align:center}
+  /* ---- menus de mosaico ---- */
+  .brand{display:flex;flex-direction:column;align-items:center;gap:2px;margin-bottom:6px}
+  .gear{position:fixed;top:14px;right:16px;font-size:22px;padding:8px 12px;z-index:11;
+    background:#241d16;border:2px solid #8a713f;border-radius:9px;line-height:1}
+  .closeX{position:fixed;top:14px;right:16px;font-family:Impact,sans-serif;font-size:20px;
+    padding:7px 15px;z-index:11;background:#241d16;border:2px solid #8a1f1f;color:#ff8a7a;border-radius:9px}
+  .tiles{display:grid;gap:14px;width:min(880px,94vw)}
+  .tiles.home{grid-template-columns:1fr 1fr;grid-template-areas:"cust solo" "cust multi"}
+  .tiles.four{grid-template-columns:1fr 1fr}
+  .tile{background:linear-gradient(160deg,#1a1510 0%,#100d0a 100%);border:2px solid #6b5a3c;
+    border-radius:12px;padding:18px 20px;cursor:pointer;transition:.13s;display:flex;
+    flex-direction:column;justify-content:center;gap:6px;min-height:112px}
+  .tile:hover{border-color:#ffd45e;transform:translateY(-3px);box-shadow:0 10px 26px rgba(0,0,0,.55)}
+  .tile h3{font-family:Impact,"Arial Black",sans-serif;font-size:22px;letter-spacing:2px;color:#ffe45c}
+  .tile p{font-size:13px;color:#a49a86;line-height:1.3}
+  .tile .tico{font-size:30px;line-height:1}
+  .tile.cust{grid-area:cust;align-items:center;text-align:center;justify-content:center}
+  .tile.cust .tico{font-size:52px;margin-bottom:4px}
+  .tile.solo{grid-area:solo} .tile.multi{grid-area:multi}
+  .tile.off{opacity:.42;cursor:not-allowed;border-style:dashed}
+  .tile.off:hover{transform:none;border-color:#6b5a3c;box-shadow:none}
+  .tile .soon{font-size:11px;letter-spacing:2px;color:#8a7a5a}
+  /* ---- ranuras de jugador del lobby ---- */
+  .slots{display:flex;gap:12px;justify-content:center;align-items:flex-end;flex-wrap:wrap;width:100%;
+    padding:6px 0 2px}
+  .slot{background:#12100c;border:2px solid #5a4c33;border-radius:10px;padding:8px 6px 6px;
+    display:flex;flex-direction:column;align-items:center;gap:3px;min-width:96px}
+  .slot canvas{display:block;image-rendering:auto}
+  .slot .pnum{font-family:Impact,sans-serif;letter-spacing:2px;color:#c9b48a;font-size:13px}
+  .slot .pnick{font-size:13px;color:#f0ead8;max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .slot .ptag{font-size:10px;color:#8a7a5a;letter-spacing:1px}
+  .slot.me{border-color:#ffd45e;background:#1d1710}
+  .slot.free{border-style:dashed;opacity:.45;min-width:64px}
+  .slot.free canvas{width:44px;height:72px}
   .hairgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;width:100%;
-    max-height:236px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:8px}
+    max-height:190px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:8px}
   .hitem{background:#14110e;border:2px solid #5a4c33;border-radius:6px;cursor:pointer;padding:2px 0 3px;
     display:flex;flex-direction:column;align-items:center;gap:1px;transition:.1s}
   .hitem:hover{border-color:#ffd45e}
@@ -77,45 +111,86 @@
 
 <!-- ===================== MENU PRINCIPAL ===================== -->
 <div class="screen on" id="scr-main">
-  <h1>TORREMAR</h1>
-  <div class="sub">D U C &nbsp; I N &nbsp; A L T U M</div>
-  <div class="panel col" style="align-items:center">
-    <div class="row"><span class="muted">APODO</span><input id="nick" maxlength="16" placeholder="Aliro Mera"></div>
-    <div class="row">
-      <button id="btn-host">CREAR SALA (HOST)</button>
-      <button id="btn-join">UNIRSE A SALA</button>
-      <button id="btn-char">PERSONAJE</button>
-      <button id="btn-keys">OPCIONES DE CONTROL</button>
-    </div>
-    <div class="row"><span class="muted">DIFICULTAD</span><select id="sel-solo-diff"></select></div>
-    <div class="row"><button id="btn-solo" class="go">JUGAR EN SOLITARIO</button></div>
-    <div class="muted" id="net-state">Red: comprobando…</div>
+  <button class="gear" id="btn-keys" title="Opciones de control">⚙</button>
+  <div class="brand">
+    <h1>TORREMAR</h1>
+    <div class="sub">D U C &nbsp; I N &nbsp; A L T U M</div>
   </div>
-  <div class="muted">Supervivencia por salas · 50 salas · cooperativo hasta 8 jugadores</div>
+  <div class="tiles home">
+    <div class="tile cust" id="tile-char">
+      <canvas id="home-preview" width="120" height="196"
+              style="width:120px;height:196px;image-rendering:auto"></canvas>
+      <h3>PERSONALIZACIÓN</h3>
+      <p>Apodo, piel, uniforme y 20 peinados</p>
+    </div>
+    <div class="tile solo" id="tile-solo">
+      <div class="tico">🎯</div>
+      <h3>UN JUGADOR</h3>
+      <p>50 salas tú solo contra el claustro</p>
+    </div>
+    <div class="tile multi" id="tile-mp">
+      <div class="tico">🌐</div>
+      <h3>MULTIJUGADOR</h3>
+      <p>Cooperativo de hasta 8 jugadores</p>
+    </div>
+  </div>
+  <div class="muted" id="net-state">Red: comprobando…</div>
+</div>
+
+<!-- ===================== MULTIJUGADOR ===================== -->
+<div class="screen" id="scr-mp">
+  <button class="closeX" id="btn-mp-back">✕</button>
+  <h2>MULTIJUGADOR</h2>
+  <div class="tiles four">
+    <div class="tile" id="tile-host">
+      <div class="tico">🏠</div>
+      <h3>CREAR PARTIDA</h3>
+      <p>Montas la sala y repartes el código</p>
+    </div>
+    <div class="tile" id="tile-joing">
+      <div class="tico">🔑</div>
+      <h3>UNIRSE A PARTIDA</h3>
+      <p>Entras con el código de un compañero</p>
+    </div>
+    <div class="tile" id="tile-open">
+      <div class="tico">🎲</div>
+      <h3>PARTIDA ABIERTA</h3>
+      <p>Busca una sala pública y, si no hay, la abre</p>
+    </div>
+    <div class="tile off" id="tile-local">
+      <div class="tico">🎮</div>
+      <h3>MISMO DISPOSITIVO</h3>
+      <p class="soon">PRÓXIMAMENTE</p>
+    </div>
+  </div>
+  <div class="warn" id="mp-msg"></div>
 </div>
 
 <!-- ===================== PERSONAJE ===================== -->
 <div class="screen" id="scr-char">
-  <h2>PERSONAJE</h2>
+  <button class="closeX" id="btn-char-x">✕</button>
+  <h2>PERSONALIZACIÓN</h2>
   <div class="panel col">
     <div class="row" style="align-items:flex-start;gap:22px">
-      <div class="col" style="flex:1;min-width:280px">
-        <div class="muted">COLOR DE PIEL · solo tonos cálidos reales</div>
-        <canvas id="skin-field" width="300" height="150"
+      <div class="col" style="flex:1.15;min-width:300px">
+        <div class="muted">UNIFORME</div>
+        <div class="row" id="fit-list" style="justify-content:flex-start;gap:12px"></div>
+        <div class="muted" style="margin-top:6px">COLOR DE PIEL · solo tonos cálidos reales</div>
+        <canvas id="skin-field" width="300" height="120"
                 style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
         <div class="row" style="justify-content:flex-start">
           <span class="muted">HEX</span>
-          <input id="skin-hex" maxlength="7" value="#e8bd93" style="width:120px;font-family:'Courier New',monospace">
-          <div id="skin-dot" style="width:34px;height:34px;border-radius:6px;border:2px solid #fff;background:#e8bd93"></div>
+          <input id="skin-hex" maxlength="7" value="#e8bd93" style="width:110px;font-family:'Courier New',monospace">
+          <div id="skin-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#e8bd93"></div>
         </div>
         <div class="row" id="skin-presets" style="justify-content:flex-start;gap:6px"></div>
         <div class="muted" id="skin-note" style="font-size:12px"></div>
       </div>
-      <div class="col" style="flex:1;min-width:250px;align-items:center">
-        <div class="muted">VESTIMENTA</div>
-        <div class="col" id="fit-list" style="width:100%"></div>
-        <canvas id="char-preview" width="150" height="240"
-                style="width:150px;height:240px;image-rendering:auto"></canvas>
+      <div class="col" style="flex:.85;min-width:220px;align-items:center">
+        <input id="nick" maxlength="16" placeholder="Aliro Mera"
+               style="text-align:center;font-size:18px;width:100%;max-width:230px">
+        <canvas id="char-preview" width="160" height="260"
+                style="width:160px;height:260px;image-rendering:auto"></canvas>
       </div>
     </div>
     <div class="row" style="align-items:flex-start;gap:22px">
@@ -125,52 +200,57 @@
       </div>
       <div class="col" style="flex:1;min-width:250px">
         <div class="muted">COLOR DE PELO · cualquier color</div>
-        <canvas id="hair-hue" width="300" height="26"
+        <canvas id="hair-hue" width="300" height="24"
                 style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:6px;cursor:crosshair"></canvas>
-        <canvas id="hair-field" width="300" height="120"
+        <canvas id="hair-field" width="300" height="110"
                 style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
         <div class="row" style="justify-content:flex-start">
           <span class="muted">HEX</span>
-          <input id="hair-hex" maxlength="7" value="#2a1f18" style="width:120px;font-family:'Courier New',monospace">
-          <div id="hair-dot" style="width:34px;height:34px;border-radius:6px;border:2px solid #fff;background:#2a1f18"></div>
+          <input id="hair-hex" maxlength="7" value="#2a1f18" style="width:110px;font-family:'Courier New',monospace">
+          <div id="hair-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#2a1f18"></div>
         </div>
         <div class="row" id="hair-presets" style="justify-content:flex-start;gap:6px"></div>
       </div>
     </div>
     <div class="row">
       <button id="btn-char-random">ALEATORIO</button>
-      <button id="btn-char-save" class="go">GUARDAR Y VOLVER</button>
+      <button id="btn-char-save" class="go">GUARDAR</button>
     </div>
-    <div class="muted">Si no tocas nada, el color y la ropa se sortean al entrar como hasta ahora.</div>
+    <div class="muted">Si no tocas nada, piel, ropa y pelo se sortean al entrar en partida.</div>
   </div>
 </div>
 
 <!-- ===================== UNIRSE ===================== -->
 <div class="screen" id="scr-join">
-  <h2>UNIRSE A UNA SALA</h2>
+  <button class="closeX" id="btn-join-back">✕</button>
+  <h2>UNIRSE A UNA PARTIDA</h2>
   <div class="panel col" style="align-items:center">
     <div class="row"><span class="muted">CÓDIGO</span><input id="join-code" maxlength="10" placeholder="ABC123"></div>
-    <div class="row"><button id="btn-join-go" class="go">CONECTAR</button><button id="btn-join-back">VOLVER</button></div>
+    <div class="row"><button id="btn-join-go" class="go">CONECTAR</button></div>
     <div class="warn" id="join-msg"></div>
   </div>
 </div>
 
-<!-- ===================== LOBBY ===================== -->
+<!-- ===================== SALA / LOBBY ===================== -->
 <div class="screen" id="scr-lobby">
+  <button class="closeX" id="btn-lobby-back">✕</button>
   <h2 id="lobby-title">SALA DE ESPERA</h2>
   <div class="panel col">
-    <div class="row"><span class="muted">CÓDIGO DE SALA</span><div id="code">------</div>
+    <div class="row" id="code-row"><span class="muted">CÓDIGO DE SALA</span><div id="code">------</div>
       <button id="btn-copy">COPIAR</button></div>
+    <div class="slots" id="slot-list"></div>
     <div class="plist" id="lobby-list"></div>
     <div class="row" id="host-controls">
       <span class="muted">DIFICULTAD</span>
       <select id="sel-diff"></select>
-      <span class="muted">FUEGO AMIGO</span>
+      <span class="muted" id="ff-label">FUEGO AMIGO</span>
       <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select>
-      <button id="btn-start" class="go">START RUN</button>
+    </div>
+    <div class="row">
+      <button id="btn-lobby-char">PERSONALIZAR</button>
+      <button id="btn-start" class="go">START</button>
     </div>
     <div class="muted" id="lobby-hint">El anfitrión decide la dificultad y arranca la partida.</div>
-    <div class="row"><button id="btn-lobby-back" class="red">SALIR</button></div>
   </div>
 </div>
 
@@ -299,7 +379,7 @@ const OUTFITS = [
     uniform:'tee', cuff:['#1b2352','#7d2231'] }
 ];
 /* preferencias de personaje: null = nunca tocado -> aleatorio como antes */
-const PREFS = { skin:null, fit:null, hair:null, hairCol:null };
+const PREFS = { skin:null, fit:null, hair:null, hairCol:null, nick:null };
 try {
   const c = JSON.parse(localStorage.getItem('torremar.char') || 'null');
   if (c) {
@@ -307,6 +387,7 @@ try {
     PREFS.fit = (c.fit === 0 || c.fit === 1) ? c.fit : null;
     PREFS.hair = (typeof c.hair === 'number') ? c.hair : null;
     PREFS.hairCol = c.hairCol || null;
+    PREFS.nick = c.nick || null;
   }
 } catch (e) {}
 function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
@@ -3548,9 +3629,13 @@ const NET = {
     const c = this.conns.get(id);
     if (c && c.open) { try { c.send(JSON.stringify(msg)); } catch(e){} }
   },
-  host(nick, onReady, onErr) {
+  reset() {                                             /* deja el peer limpio para reintentar */
+    try { if (this.peer) this.peer.destroy(); } catch(e) {}
+    this.peer = null; this.conns.clear(); this.online = false; this.isHost = false; this.code = '';
+  },
+  host(nick, onReady, onErr, codeFijo) {
     if (!this.available) { onErr('PeerJS no disponible (sin conexión). Puedes jugar en solitario.'); return; }
-    const code = (Math.random().toString(36).slice(2,7)).toUpperCase();
+    const code = codeFijo || (Math.random().toString(36).slice(2,7)).toUpperCase();
     this.code = code;
     this.peer = new Peer('torremar-' + code, { debug:0 });
     this.isHost = true;
@@ -3784,6 +3869,14 @@ function onNet(from, m) {
       const p = G.players.get(m.id);
       if (p) { if (p.isLocal) revivePlayer(p); else { p.down = false; p.hp = Math.round(p.maxhp*0.3); } }
       if (G.isHost) relay(from, m);
+      break;
+    }
+    case 'look': {                                       /* alguien cambio su personaje */
+      const p = G.players.get(m.id);
+      if (p) { p.nick = m.nick || p.nick; p.skin = m.skin || p.skin; p.fit = m.fit|0;
+               p.hair = m.hair|0; p.hairCol = m.hairCol || p.hairCol; }
+      if (G.isHost) { relay(from, m); NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff }); }
+      if (G.state === 'menu' || G.state === 'lobby') renderLobby();
       break;
     }
     case 'item': { const it = G.items.find(o=>o.id===m.id); if (it) it.taken = true; if (G.isHost) relay(from, m); break; }
@@ -4876,30 +4969,64 @@ function showScreen(id) {
   if (id) $(id).classList.add('on');
   document.body.classList.toggle('free', !!id);
   if (id && document.pointerLockElement) document.exitPointerLock();
+  if (id === 'scr-main') renderHomePreview();          /* el mosaico muestra tu personaje */
 }
 function renderLobby() {
-  const list = $('lobby-list');
-  list.innerHTML = '';
-  for (const p of [...G.players.values()].sort((a,b)=>a.order-b.order)) {
-    const row = document.createElement('div');
-    row.className = 'pitem';
-    row.innerHTML = '<div class="dot" style="background:' + p.skin + '"></div>' +
-      '<div class="grow"><b>' + p.nick + '</b>' + (p.id===G.hostId?' <span class="muted">· anfitrión</span>':'') +
-      (p.id===G.meId?' <span class="muted">· tú</span>':'') + '</div>';
-    if (G.isHost && p.id !== G.hostId) {
+  const online = NET.online;
+  const jug = [...G.players.values()].sort((a,b)=>a.order-b.order);
+  /* ---- ranuras P1..Pn con el personaje de cada uno ---- */
+  const slots = $('slot-list');
+  slots.innerHTML = '';
+  const total = online ? MAX_PLAYERS : 1;
+  for (let i = 0; i < total; i++) {
+    const p = jug[i];
+    const box = document.createElement('div');
+    box.className = 'slot' + (p ? (p.id === G.meId ? ' me' : '') : ' free');
+    const num = document.createElement('div');
+    num.className = 'pnum'; num.textContent = 'P' + (i+1);
+    const cv = document.createElement('canvas');
+    const gran = p && p.id === G.meId;                  /* el tuyo se ve mas grande */
+    cv.width = gran ? 96 : 72; cv.height = gran ? 156 : 117;
+    const cc = cv.getContext('2d');
+    if (p) cc.drawImage(playerSprite(p.skin, p.fit|0, 'GLOCK', 'walk', 0, false, p.hair, p.hairCol),
+                        0, 0, cv.width, cv.height);
+    else {
+      cc.fillStyle = 'rgba(255,255,255,0.05)';
+      cc.fillRect(cv.width*0.22, cv.height*0.12, cv.width*0.56, cv.height*0.78);
+      cc.fillStyle = '#5a4c33'; cc.font = 'bold 30px sans-serif';
+      cc.textAlign = 'center'; cc.fillText('?', cv.width/2, cv.height*0.60);
+    }
+    const nk = document.createElement('div');
+    nk.className = 'pnick'; nk.textContent = p ? p.nick : 'LIBRE';
+    const tg = document.createElement('div');
+    tg.className = 'ptag';
+    tg.textContent = p ? [p.id===G.hostId?'ANFITRIÓN':'', p.id===G.meId?'TÚ':''].filter(Boolean).join(' · ') : '';
+    box.appendChild(num); box.appendChild(cv); box.appendChild(nk); box.appendChild(tg);
+    if (online && G.isHost && p && p.id !== G.hostId) {
       const b = document.createElement('button');
       b.className = 'red'; b.textContent = 'EXPULSAR';
+      b.style.cssText = 'font-size:10px;padding:3px 7px;margin-top:2px';
       b.onclick = () => NET.kick(p.id);
-      row.appendChild(b);
+      box.appendChild(b);
     }
-    list.appendChild(row);
+    slots.appendChild(box);
   }
-  $('host-controls').style.display = G.isHost ? 'flex' : 'none';
-  $('lobby-hint').textContent = G.isHost
-    ? 'Hasta 8 jugadores. Cuantos más entren, más enemigos habrá y más fuertes serán (los jefes, aún más).'
-    : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':'');
+  $('lobby-list').innerHTML = '';
+  /* ---- controles ---- */
+  const mando = G.isHost;                               /* en solitario tambien mandas tu */
+  $('host-controls').style.display = mando ? 'flex' : 'none';
+  $('ff-label').style.display = online ? '' : 'none';
+  $('sel-ff').style.display = online ? '' : 'none';
+  $('code-row').style.display = online ? 'flex' : 'none';
+  $('btn-start').style.display = mando ? '' : 'none';
+  $('lobby-hint').textContent = !online
+    ? 'Partida en solitario. Elige dificultad y dale a START.'
+    : (mando ? 'Hasta 8 jugadores. Cuantos más entren, más enemigos habrá y más fuertes serán (los jefes, aún más).'
+             : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':''));
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
-  $('lobby-title').textContent = 'SALA DE ESPERA (' + G.players.size + '/' + MAX_PLAYERS + ')';
+  $('lobby-title').textContent = online
+    ? 'SALA DE ESPERA (' + G.players.size + '/' + MAX_PLAYERS + ')'
+    : 'PARTIDA EN SOLITARIO';
 }
 function renderKeys() {
   const box = $('key-list');
@@ -4974,6 +5101,14 @@ function hueOf(hex) {
   else if (mx === g) h = (b-r)/d + 2;
   else h = (r-g)/d + 4;
   h *= 60; return ((h % 360) + 360) % 360;
+}
+function renderHomePreview() {
+  const pv = $('home-preview'); if (!pv) return;
+  const pc = pv.getContext('2d');
+  pc.clearRect(0,0,pv.width,pv.height);
+  const sk = PREFS.skin || charSkin, ft = (PREFS.fit === null ? charFit : PREFS.fit);
+  const hr = (PREFS.hair === null ? charHair : PREFS.hair), hc = PREFS.hairCol || charHairCol;
+  pc.drawImage(playerSprite(sk, ft, 'GLOCK', 'walk', 0, false, hr, hc), 0, 0, pv.width, pv.height);
 }
 function renderHairUI() {
   $('hair-hex').value = charHairCol;
@@ -5057,15 +5192,20 @@ function renderCharUI(note) {
   const fl = $('fit-list');
   fl.innerHTML = '';
   for (const o of OUTFITS) {
-    const row = document.createElement('div');
-    row.className = 'pitem';
-    row.style.cursor = 'pointer';
-    row.style.border = (o.id === charFit) ? '2px solid #ffd45e' : '2px solid transparent';
-    row.innerHTML = '<div class="dot" style="background:'+o.shirt+'"></div>' +
-                    '<div class="dot" style="background:'+o.pants+'"></div>' +
-                    '<div class="grow" style="font-size:14px">'+o.name+'</div>';
-    row.onclick = () => { charFit = o.id; renderCharUI(); };
-    fl.appendChild(row);
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#14110e;border:2px solid ' +
+      (o.id === charFit ? '#ffd45e' : '#5a4c33') + ';border-radius:9px;padding:6px 8px;cursor:pointer;' +
+      'display:flex;flex-direction:column;align-items:center;gap:3px;width:118px';
+    const cv = document.createElement('canvas');
+    cv.width = 92; cv.height = 150;
+    cv.getContext('2d').drawImage(
+      playerSprite(charSkin, o.id, 'GLOCK', 'walk', 0, false, charHair, charHairCol), 0, 0, 92, 150);
+    const lb = document.createElement('div');
+    lb.style.cssText = 'font-size:10px;color:#c9b48a;text-align:center;line-height:1.15';
+    lb.textContent = o.name;
+    card.appendChild(cv); card.appendChild(lb);
+    card.onclick = () => { charFit = o.id; renderCharUI(); };
+    fl.appendChild(card);
   }
   const pv = $('char-preview'), pc = pv.getContext('2d');
   pc.clearRect(0,0,pv.width,pv.height);
@@ -5074,7 +5214,10 @@ function renderCharUI(note) {
                0, 0, pv.width, pv.height);
   renderHairUI();
 }
-function openChar() {
+let charReturn = 'scr-main';
+function openChar(volverA) {
+  charReturn = volverA || 'scr-main';
+  $('nick').value = PREFS.nick || $('nick').value || '';
   charSkin = PREFS.skin || charSkin;
   if (PREFS.fit !== null) charFit = PREFS.fit;
   if (PREFS.hair !== null) charHair = PREFS.hair;
@@ -5178,7 +5321,7 @@ function startRunHost() {
 }
 /* ambos desplegables salen de DIFFS: una sola lista que mantener */
 function fillDiffSelects() {
-  for (const idSel of ['sel-diff','sel-solo-diff']) {
+  for (const idSel of ['sel-diff']) {
     const el = $(idSel); if (!el) continue;
     el.innerHTML = '';
     DIFFS.forEach((d, i) => {
@@ -5193,15 +5336,42 @@ function fillDiffSelects() {
   }
 }
 fillDiffSelects();
-function soloRun() {
-  NET.online = false; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
+setTimeout(() => { try { renderHomePreview(); } catch(e){} }, 0);
+/* un jugador: se pasa igual por la sala, con la ranura P1 sola */
+function prepararSolo() {
+  NET.online = false; NET.code = ''; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
   G.players.clear();
-  const nick = ($('nick').value || 'ALIRO MERA').slice(0,16).toUpperCase();
-  const p = makePlayer('SOLO', nick, mySkin(), 1, myFit(), myHair(), myHairCol());
+  const p = makePlayer('SOLO', miNick(), mySkin(), 1, myFit(), myHair(), myHairCol());
   G.players.set('SOLO', p);
-  G.diff = clamp(parseInt($('sel-solo-diff').value,10)||0, 0, DIFFS.length-1);
   G.ff = 0; G.nPlayers = 1;
+  showScreen('scr-lobby');
+  renderLobby();
+}
+function soloRun() {
+  G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
+  G.ff = 0; G.nPlayers = 1;
+  showScreen(null);
   beginRun(0, (Math.random()*1e9)|0);
+}
+/* partida abierta: sin servidor de emparejamiento, se prueban unos codigos
+   publicos conocidos; si ninguno responde, se abre el primero libre */
+const SALAS_ABIERTAS = ['PUB1','PUB2','PUB3','PUB4'];
+function partidaAbierta(i) {
+  i = i || 0;
+  if (!NET.available) { $('mp-msg').textContent = 'PeerJS no disponible (sin conexión).'; return; }
+  if (i >= SALAS_ABIERTAS.length) { abrirSalaPublica(0); return; }
+  $('mp-msg').textContent = 'Buscando partida abierta… (' + (i+1) + '/' + SALAS_ABIERTAS.length + ')';
+  NET.join(SALAS_ABIERTAS[i], miNick(),
+    () => { $('mp-msg').textContent = 'Conectado a una partida abierta.'; },
+    () => { NET.reset(); partidaAbierta(i+1); });
+}
+function abrirSalaPublica(i) {
+  if (i >= SALAS_ABIERTAS.length) { $('mp-msg').textContent = 'Todas las salas públicas están ocupadas. Crea una privada.'; return; }
+  $('mp-msg').textContent = 'No había ninguna abierta: montando la tuya…';
+  NET.host(miNick(),
+    (code) => { showScreen('scr-lobby'); renderLobby(); addMsg('PARTIDA ABIERTA ' + code, '#8ce89b'); },
+    () => { NET.reset(); abrirSalaPublica(i+1); },
+    SALAS_ABIERTAS[i]);
 }
 /* ------------------------------ entrada ------------------------------ */
 function lockPointer() {
@@ -5255,12 +5425,19 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 /* --------------------------- botones del DOM ------------------------- */
-$('btn-host').onclick = () => {
-  const nick = ($('nick').value || 'ALIRO MERA').slice(0,16).toUpperCase();
-  NET.host(nick, (code) => { showScreen('scr-lobby'); renderLobby(); addMsg('SALA CREADA: ' + code, '#8ce89b'); },
-           (err) => { $('net-state').textContent = err; });
+const miNick = () => (($('nick').value || PREFS.nick || 'ALIRO MERA').slice(0,16).toUpperCase());
+$('tile-char').onclick = () => openChar();
+$('tile-solo').onclick = () => { Snd.init(); prepararSolo(); };
+$('tile-mp').onclick = () => { Snd.init(); $('mp-msg').textContent = ''; showScreen('scr-mp'); };
+$('btn-mp-back').onclick = () => showScreen('scr-main');
+$('tile-host').onclick = () => {
+  $('mp-msg').textContent = 'Creando sala…';
+  NET.host(miNick(), (code) => { showScreen('scr-lobby'); renderLobby(); addMsg('SALA CREADA: ' + code, '#8ce89b'); },
+           (err) => { $('mp-msg').textContent = err; });
 };
-$('btn-join').onclick = () => { showScreen('scr-join'); $('join-msg').textContent = ''; };
+$('tile-joing').onclick = () => { showScreen('scr-join'); $('join-msg').textContent = ''; };
+$('tile-open').onclick = () => partidaAbierta();
+$('tile-local').onclick = () => { $('mp-msg').textContent = 'Jugar en el mismo dispositivo llegará más adelante.'; };
 $('btn-join-go').onclick = () => {
   const code = ($('join-code').value||'').trim().toUpperCase();
   const nick = ($('nick').value || 'JUGADOR').slice(0,16).toUpperCase();
@@ -5269,14 +5446,25 @@ $('btn-join-go').onclick = () => {
   NET.join(code, nick, () => { $('join-msg').textContent = 'Conectado. Esperando datos…'; },
            (err) => { $('join-msg').textContent = err; });
 };
-$('btn-join-back').onclick = () => showScreen('scr-main');
-$('btn-char').onclick = () => openChar();
-$('btn-char-save').onclick = () => {
+$('btn-join-back').onclick = () => showScreen('scr-mp');
+$('btn-char-x').onclick = () => guardarPersonaje(true);
+$('btn-char-save').onclick = () => guardarPersonaje(true);
+function guardarPersonaje(volver) {
   PREFS.skin = charSkin; PREFS.fit = charFit;
   PREFS.hair = charHair; PREFS.hairCol = charHairCol;
+  PREFS.nick = ($('nick').value || '').slice(0,16);
   saveChar();
-  showScreen('scr-main');
-};
+  /* si ya estabas en una sala, el cambio se ve al momento */
+  const yo = G.players.get(G.meId);
+  if (yo) {
+    yo.nick = miNick(); yo.skin = charSkin; yo.fit = charFit;
+    yo.hair = charHair; yo.hairCol = charHairCol;
+    if (G.isHost) NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
+    else NET.send({ t:'look', id:G.meId, nick:yo.nick, skin:yo.skin, fit:yo.fit, hair:yo.hair, hairCol:yo.hairCol });
+  }
+  if (volver) showScreen(charReturn);
+  if (charReturn === 'scr-lobby') renderLobby();
+}
 $('btn-char-random').onclick = () => {
   PREFS.skin = null; PREFS.fit = null; PREFS.hair = null; PREFS.hairCol = null; saveChar();
   charSkin = pick(SKINS); charFit = (Math.random()<0.5?0:1);
@@ -5334,8 +5522,8 @@ $('btn-restart').onclick = () => {
   beginRun(0, seed);
 };
 $('btn-keys-reset').onclick = () => { KEYS = Object.assign({}, DEFAULT_KEYS); saveKeys(); renderKeys(); };
-$('btn-solo').onclick = () => { Snd.init(); soloRun(); };
-$('btn-start').onclick = () => startRunHost();
+$('btn-start').onclick = () => { if (NET.online) startRunHost(); else soloRun(); };
+$('btn-lobby-char').onclick = () => openChar('scr-lobby');
 $('btn-lobby-back').onclick = () => backToMenu();
 $('btn-end-back').onclick = () => backToMenu();
 $('btn-copy').onclick = () => { try { navigator.clipboard.writeText(NET.code); addMsg('CÓDIGO COPIADO','#8ce89b'); } catch(e){} };
