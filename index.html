@@ -908,6 +908,19 @@ function rayWall(ox,oy,dx,dy,maxD) {
 const DIRX=[1,-1,0,0,1,1,-1,-1], DIRY=[0,0,1,-1,1,-1,1,-1];
 const flows = [];                                          /* uno por jugador vivo */
 let flowQ = null;
+/* velocidad suavizada de cada jugador: los jefes la usan para adelantar el
+   tiro en vez de disparar siempre a donde ya no estas */
+function trackPlayerVel(dt) {
+  if (dt <= 0) return;
+  for (const p of G.players.values()) {
+    if (p._px === undefined) { p._px = p.x; p._py = p.y; p.velX = 0; p.velY = 0; continue; }
+    const vx = (p.x - p._px)/dt, vy = (p.y - p._py)/dt;
+    const k = clamp(dt*9, 0, 1);
+    p.velX = (p.velX||0) + (vx - (p.velX||0))*k;
+    p.velY = (p.velY||0) + (vy - (p.velY||0))*k;
+    p._px = p.x; p._py = p.y;
+  }
+}
 function buildFlows(targets) {
   flows.length = 0;
   const N = MAP.w*MAP.h;
@@ -1020,6 +1033,7 @@ function figure(c, W, H, o) {
   roundRect(c, cx-shW/2, bodyTop, shW, torsoH, shW*0.16, o.shirt);
   if (o.vest) { c.fillStyle=o.vest; c.fillRect(cx-shW*0.28, bodyTop, shW*0.56, torsoH*0.72); }
   if (o.uniform) drawUniform(c, o.uniform, cx, bodyTop, shW, torsoH, skin);
+  if (o.suit || o.tie) drawSuit(c, cx, bodyTop, shW, torsoH, o);
   /* brazos: la manga cubre solo la fraccion o.sleeve (1 = manga larga) */
   const armW = shW*0.20, armLen = torsoH*0.84, shoulderY = bodyTop+torsoH*0.12;
   const manga = (o.sleeve === undefined) ? 1 : o.sleeve;
@@ -1061,6 +1075,27 @@ function figure(c, W, H, o) {
     } else {
       c.beginPath(); c.ellipse(cx, headCY-headRY*0.36, headRX*1.02, headRY*0.62, 0, Math.PI, TAU); c.fill();
       c.fillRect(cx-headRX*1.02, headCY-headRY*0.42, headRX*2.04, headRY*0.22);
+      if (o.hairBack) {                             /* peinado hacia atras: raya y volumen */
+        c.fillStyle = shade(o.hair, 0.78);
+        for (let i=0;i<4;i++)
+          c.fillRect(cx-headRX*(0.86-i*0.02), headCY-headRY*(0.92-i*0.13), headRX*(1.72-i*0.06), headRY*0.045);
+        c.fillStyle = o.hair;
+        c.beginPath(); c.ellipse(cx, headCY-headRY*0.78, headRX*0.98, headRY*0.30, 0, Math.PI, TAU); c.fill();
+      }
+    }
+    if (o.greyTemples) {                            /* canas: mechas dentro del pelo */
+      c.save();
+      c.beginPath();
+      c.ellipse(cx, headCY-headRY*0.36, headRX*1.02, headRY*0.62, 0, Math.PI, TAU);
+      c.rect(cx-headRX*1.02, headCY-headRY*0.42, headRX*2.04, headRY*0.22);
+      c.clip();
+      c.fillStyle = 'rgba(226,226,222,0.80)';
+      for (const sx2 of [-1, 1]) {
+        c.beginPath();
+        c.ellipse(cx + sx2*headRX*0.72, headCY-headRY*0.30, headRX*0.20, headRY*0.22, 0, 0, TAU);
+        c.fill();
+      }
+      c.restore();
     }
   }
   const eyeY = headCY+headRY*0.06, eyeDX = headRX*0.40, eyeR = headRX*0.20;
@@ -1072,11 +1107,20 @@ function figure(c, W, H, o) {
   ellipse(c, cx-eyeDX+eyeR*0.15, eyeY, eyeR*0.42, eyeR*0.42, o.redEyes?'#e02020':'#141414');
   ellipse(c, cx+eyeDX+eyeR*0.15, eyeY, eyeR*0.42, eyeR*0.42, o.redEyes?'#e02020':'#141414');
   if (o.glasses) {
-    c.strokeStyle = o.glassCol||'#141414'; c.lineWidth = Math.max(2, headRX*0.09);
-    c.fillStyle = 'rgba(190,225,255,0.30)';
-    const gw = eyeR*2.5, gh = eyeR*2.1;
-    c.fillRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.fillRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
-    c.strokeRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.strokeRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
+    c.strokeStyle = o.glassCol||'#141414';
+    c.lineWidth = Math.max(1, headRX*(o.thinGlass ? 0.035 : 0.09));
+    const gw = eyeR*2.5, gh = eyeR*(o.thinGlass ? 1.7 : 2.1);
+    if (!o.thinGlass) {                             /* montura gruesa: cristal tintado */
+      c.fillStyle = 'rgba(190,225,255,0.30)';
+      c.fillRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.fillRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
+      c.strokeRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.strokeRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
+    } else {                                        /* al aire: solo el aro */
+      for (const sx2 of [-1, 1]) {
+        c.beginPath();
+        c.ellipse(cx + sx2*eyeDX, eyeY, gw*0.52, gh*0.60, 0, 0, TAU);
+        c.stroke();
+      }
+    }
     c.beginPath(); c.moveTo(cx-eyeDX+gw/2, eyeY); c.lineTo(cx+eyeDX-gw/2, eyeY);
     c.moveTo(cx-eyeDX-gw/2, eyeY); c.lineTo(cx-headRX, eyeY-gh*0.2);
     c.moveTo(cx+eyeDX+gw/2, eyeY); c.lineTo(cx+headRX, eyeY-gh*0.2); c.stroke();
@@ -1086,6 +1130,27 @@ function figure(c, W, H, o) {
     c.fillStyle = '#5a1f1f';
     if (o.shout) ellipse(c, cx, eyeY+headRY*0.55, headRX*0.24, headRY*0.20, '#5a1f1f');
     else c.fillRect(cx-headRX*0.26, eyeY+headRY*0.52, headRX*0.52, headRY*0.07);
+  }
+  if (o.mustache) {                                 /* bigote justo sobre el labio */
+    c.fillStyle = o.hair2 || shade(o.hair||'#2b2b2b', 0.80);
+    c.beginPath();
+    c.ellipse(cx, eyeY+headRY*0.44, headRX*0.32, headRY*0.075, 0, Math.PI, TAU);
+    c.fill();
+    c.fillRect(cx-headRX*0.32, eyeY+headRY*0.43, headRX*0.64, headRY*0.05);
+  }
+  if (o.smile) {                                    /* sonrisa ancha con dientes */
+    c.fillStyle = '#3a1414';
+    c.beginPath();
+    c.ellipse(cx, eyeY+headRY*0.50, headRX*0.34, headRY*0.16, 0, 0, Math.PI);
+    c.fill();
+    c.fillStyle = '#f4f2ea';
+    c.fillRect(cx-headRX*0.30, eyeY+headRY*0.50, headRX*0.60, headRY*0.07);
+  }
+  if (o.beard) {                                    /* barba corta / sombra */
+    c.fillStyle = 'rgba(30,24,20,' + (o.beard === 2 ? 0.55 : 0.28) + ')';
+    c.beginPath();
+    c.ellipse(cx, eyeY+headRY*0.42, headRX*0.72, headRY*0.52, 0, 0, Math.PI);
+    c.fill();
   }
   if (o.old) {
     c.strokeStyle='rgba(0,0,0,0.25)'; c.lineWidth=Math.max(1, headRX*0.045);
@@ -1194,41 +1259,87 @@ const MINIBOSSES = {
     attack:'formula',
     look:{ shirt:'#27ae60', pants:'#1e5f3a', hair:'#3a2a1c', headRatio:0.25, shoulders:0.94, headWide:1.15, glasses:true, emoji:'🧮' } }
 };
+/* Los cuatro jefes suben en fuerza sin excepcion: Roberto < Arturo < David
+   < Jorge, tanto en vida como en dano. El campo tier deja el orden explicito
+   y la prueba de regresion comprueba que se mantiene. */
 const BOSSES = {
-  roberto:{ id:'roberto', name:'ROBERTO', boss:true, room:10, hp:1500, speed:2.2, radius:0.55,
-    scaleX:1.20, scaleY:1.15, dmg:24, cd:2.0, sight:40, score:5000, tex:{w:190,h:200},
+  roberto:{ id:'roberto', name:'ROBERTO', boss:true, tier:1, room:10, hp:1600, speed:2.3, radius:0.55,
+    scaleX:1.24, scaleY:1.22, dmg:22, cd:1.15, sight:40, score:5000, tex:{w:190,h:230},
     attack:'charge', chargeEvery:2.2, chargeTime:1.25, chargeMul:4.6, chargeMin:4.2, prefer:8.0, quad:true,
-    look:{ shirt:'#2b6f4e', pants:'#26313f', hair:'#4a3524', headRatio:0.26, glasses:true, headEmoji:'🤓', angry:true, shoulders:0.66 } },
-  arturo: { id:'arturo', name:'ARTURO', boss:true, room:20, hp:2100, speed:2.4, radius:0.40,
-    scaleX:0.60, scaleY:0.56, dmg:26, cd:0.9, sight:40, score:7000, tex:{w:128,h:208},
-    attack:'dash', dashEvery:2.8, dashTime:0.55, dashMul:5, chargeMin:3.4, prefer:6.0,
-    summon:'franklin', summonN:2, summonMax:4,
-    look:{ skin:'#4a2c1a', shirt:'#c9a227', pants:'#2c2016', hair:'#120c08', headRatio:0.32, angry:true, shout:true, emoji:'💢' } },
-  david:  { id:'david', name:'DAVID', boss:true, room:30, hp:2800, speed:1.5, radius:0.50,
-    scaleX:0.95, scaleY:1.12, dmg:20, cd:1.7, projSpeed:6.4, sight:40, score:9000, tex:{w:180,h:216},
-    attack:'poison', prefer:9.0,
-    look:{ shirt:'#5b3fa0', pants:'#2b2440', hair:'#3b3b3b', headRatio:0.68, headWide:1.0, bald:true,
-           glasses:true, glassCol:'#101010', shoulders:0.52, angry:true, headEmoji:'👓' } },
-  jorge:  { id:'jorge', name:'JORGE CORONEL', boss:true, room:50, hp:6200, speed:1.7, radius:0.58,
-    scaleX:1.00, scaleY:2.30, dmg:20, cd:2.5, projSpeed:4.8, sight:44, score:25000, tex:{w:150,h:300},
-    attack:'hell', prefer:10.0, summon:'mixed', summonN:3, summonMax:6,
-    look:{ shirt:'#1b1b22', pants:'#101015', hair:'#0d0d0d', headRatio:0.20, old:true, angry:true,
-           shoulders:0.62, emoji:'🎯' } }
+    look:{ skin:'#c78b58', shirt:'#efdcd8', pants:'#26262e', hair:'#2f2118', headRatio:0.26,
+           shoulders:0.66, tie:'#232838', badge:true, beard:1, angry:true } },
+  arturo: { id:'arturo', name:'ARTURO', boss:true, tier:2, room:20, hp:2700, speed:2.6, radius:0.44,
+    scaleX:0.72, scaleY:0.74, dmg:30, cd:1.20, sight:40, score:7000, tex:{w:140,h:210},
+    attack:'dash', dashEvery:2.3, dashTime:0.72, dashMul:5.2, chargeMin:3.2, prefer:6.4,
+    volley:3, volleySpr:'excel', volleyMul:0.55, projSpeed:7.6, lead:0.55,
+    summon:'franklin', summonN:3, summonMax:5,
+    look:{ skin:'#b97f4e', shirt:'#2d6ca6', pants:'#2a5f93', hair:'#332a22', headRatio:0.28,
+           shoulders:0.64, suit:'#2d6ca6', dress:'#f6f6f2', tie:'#57a3d8', tiePat:'dot',
+           glasses:true, glassCol:'#6e6e70', thinGlass:true, mustache:true, greyTemples:true,
+           old:true, angry:true } },
+  david:  { id:'david', name:'DAVID', boss:true, tier:3, room:30, hp:4200, speed:1.9, radius:0.50,
+    scaleX:0.86, scaleY:0.92, dmg:36, cd:1.75, projSpeed:6.8, sight:40, score:9000, tex:{w:150,h:214},
+    attack:'poison', prefer:9.0, lead:0.72,
+    look:{ skin:'#c08a5e', shirt:'#4b515c', pants:'#3f444e', hair:'#171310', headRatio:0.27,
+           shoulders:0.64, suit:'#4b515c', dress:'#f7f7f3', tie:'#8e1f3d', tiePat:'stripe',
+           beard:1, angry:true } },
+  jorge:  { id:'jorge', name:'JORGE CORONEL', boss:true, tier:4, room:50, hp:7000, speed:2.0, radius:0.58,
+    scaleX:1.05, scaleY:1.90, dmg:44, cd:1.7, projSpeed:5.2, sight:44, score:25000, tex:{w:170,h:300},
+    attack:'hell', prefer:10.0, lead:0.88, summon:'mixed', summonN:4, summonMax:7,
+    look:{ skin:'#c9905e', shirt:'#1b2130', pants:'#171c27', hair:'#2a1d13', headRatio:0.22,
+           shoulders:0.66, suit:'#1b2130', dress:'#bcd4ea', dressPat:'check', tie:'#9a8f78', tiePat:'dot',
+           hairBack:true, greyTemples:true, smile:true, old:true } }
 };
 const ALLDEF = Object.assign({}, ENEMIES, MINIBOSSES, BOSSES);
 
 /* ------------------------ sprites del bestiario ---------------------- */
-function drawQuad(c, W, H) {                        /* cuadrón de Roberto */
-  const y = H*0.74;
-  roundRect(c, W*0.12, y, W*0.76, H*0.17, W*0.05, '#b02b22');
-  roundRect(c, W*0.24, y-H*0.07, W*0.52, H*0.09, W*0.03, '#8d1f18');
-  c.fillStyle='#1c1c20';
-  for (const wx of [W*0.18, W*0.72]) {
-    ellipse(c, wx, y+H*0.17, W*0.13, H*0.075, '#17171b');
-    ellipse(c, wx, y+H*0.17, W*0.06, H*0.035, '#4a4a52');
+function drawQuad(c, W, H) {                        /* cuadron de Roberto: chasis y ruedas */
+  const y = H*0.60;
+  c.fillStyle = '#1d1f24';                          /* ruedas traseras */
+  for (const wx of [W*0.13, W*0.87]) {
+    ellipse(c, wx, y + H*0.30, W*0.145, H*0.155, '#17181c');
+    ellipse(c, wx, y + H*0.30, W*0.075, H*0.080, '#41454d');
+    c.strokeStyle = '#0d0e11'; c.lineWidth = Math.max(1, W*0.012);
+    for (let i=0;i<7;i++) {
+      const a = i*TAU/7;
+      c.beginPath();
+      c.moveTo(wx + Math.cos(a)*W*0.085, y + H*0.30 + Math.sin(a)*H*0.090);
+      c.lineTo(wx + Math.cos(a)*W*0.145, y + H*0.30 + Math.sin(a)*H*0.155);
+      c.stroke();
+    }
   }
-  c.fillStyle='#d8d8dc'; c.fillRect(W*0.30, y+H*0.03, W*0.40, 3);
-  c.fillStyle='#f0d060'; c.fillRect(W*0.14, y+H*0.02, W*0.08, H*0.05);
+  const carro = c.createLinearGradient(0, y, 0, y + H*0.34);
+  carro.addColorStop(0, '#3b3f47'); carro.addColorStop(0.5, '#23262c'); carro.addColorStop(1, '#15171b');
+  roundRect(c, W*0.10, y + H*0.02, W*0.80, H*0.30, W*0.07, carro);
+  c.fillStyle = '#2b2f36';                          /* guardabarros */
+  roundRect(c, W*0.04, y + H*0.10, W*0.24, H*0.13, W*0.05, '#2b2f36');
+  roundRect(c, W*0.72, y + H*0.10, W*0.24, H*0.13, W*0.05, '#2b2f36');
+  c.fillStyle = '#0f1013';                          /* parrilla */
+  roundRect(c, W*0.30, y + H*0.16, W*0.40, H*0.10, W*0.02, '#0f1013');
+  c.fillStyle = '#8b1b1b';                          /* matricula */
+  c.fillRect(W*0.44, y + H*0.27, W*0.12, H*0.035);
+}
+function drawQuadFront(c, W, H) {                   /* lo que tapa al conductor */
+  const y = H*0.60;
+  c.fillStyle = '#fdf6d0';                          /* faros encendidos */
+  for (const fx of [W*0.24, W*0.76]) {
+    const g = c.createRadialGradient(fx, y + H*0.10, W*0.01, fx, y + H*0.10, W*0.10);
+    g.addColorStop(0, 'rgba(255,252,225,1)'); g.addColorStop(0.45, 'rgba(255,244,180,0.85)');
+    g.addColorStop(1, 'rgba(255,230,140,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(fx, y + H*0.10, W*0.10, 0, TAU); c.fill();
+    ellipse(c, fx, y + H*0.10, W*0.045, H*0.030, '#fffdf0');
+  }
+  c.strokeStyle = '#2c3037'; c.lineCap = 'round';   /* manillar */
+  c.lineWidth = Math.max(2, W*0.030);
+  c.beginPath();
+  c.moveTo(W*0.20, y - H*0.10); c.lineTo(W*0.36, y - H*0.16);
+  c.lineTo(W*0.64, y - H*0.16); c.lineTo(W*0.80, y - H*0.10);
+  c.stroke();
+  c.lineWidth = Math.max(2, W*0.045); c.strokeStyle = '#14161a';
+  c.beginPath(); c.moveTo(W*0.17, y - H*0.09); c.lineTo(W*0.26, y - H*0.125); c.stroke();
+  c.beginPath(); c.moveTo(W*0.83, y - H*0.09); c.lineTo(W*0.74, y - H*0.125); c.stroke();
+  c.lineCap = 'butt';
+  roundRect(c, W*0.44, y - H*0.13, W*0.12, H*0.11, W*0.02, '#d8dade');   /* consola */
 }
 /* ---------------------------------------------------------------------
    Escudo del colegio Torremar, tal cual: cuartelado con borde granate y
@@ -1402,6 +1513,115 @@ function arcText(c, txt, cx, cy, r, size, col, spread) {
   }
   c.restore();
 }
+/* ---------------------------------------------------------------------
+   Traje de profesor: camisa en V, corbata con nudo y americana con solapas.
+   Los jefes van vestidos asi, cada uno con sus colores.
+   --------------------------------------------------------------------- */
+function drawSuit(c, cx, top, shW, torsoH, o) {
+  const cuello = top + torsoH*0.02;
+  const vAncho = shW*0.30, vHondo = torsoH*0.34;
+  /* camisa: cuna en V bajo el cuello */
+  c.fillStyle = o.dress || '#f4f4f0';
+  c.beginPath();
+  c.moveTo(cx - vAncho, cuello);
+  c.lineTo(cx + vAncho, cuello);
+  c.lineTo(cx + vAncho*0.34, cuello + vHondo);
+  c.lineTo(cx - vAncho*0.34, cuello + vHondo);
+  c.closePath(); c.fill();
+  if (o.dressPat === 'check') {                     /* camisa de cuadros */
+    c.save(); c.clip();
+    c.strokeStyle = 'rgba(80,120,165,0.55)'; c.lineWidth = Math.max(0.6, shW*0.014);
+    for (let i=-3;i<=3;i++) {
+      c.beginPath(); c.moveTo(cx + i*shW*0.055, cuello); c.lineTo(cx + i*shW*0.055, cuello+vHondo); c.stroke();
+      c.beginPath(); c.moveTo(cx-vAncho, cuello + (i+3)*vHondo*0.16);
+      c.lineTo(cx+vAncho, cuello + (i+3)*vHondo*0.16); c.stroke();
+    }
+    c.restore();
+  }
+  /* cuello de la camisa */
+  c.fillStyle = shade(o.dress || '#f4f4f0', 0.94);
+  c.beginPath();
+  c.moveTo(cx - vAncho, cuello); c.lineTo(cx - vAncho*0.20, cuello);
+  c.lineTo(cx, cuello + torsoH*0.10); c.lineTo(cx - vAncho*0.70, cuello + torsoH*0.075);
+  c.closePath(); c.fill();
+  c.beginPath();
+  c.moveTo(cx + vAncho, cuello); c.lineTo(cx + vAncho*0.20, cuello);
+  c.lineTo(cx, cuello + torsoH*0.10); c.lineTo(cx + vAncho*0.70, cuello + torsoH*0.075);
+  c.closePath(); c.fill();
+  /* corbata: nudo y pala */
+  if (o.tie) {
+    const nx = cx, ny = cuello + torsoH*0.055, nw = shW*0.085;
+    c.fillStyle = shade(o.tie, 0.82);
+    c.beginPath();
+    c.moveTo(nx-nw, ny); c.lineTo(nx+nw, ny);
+    c.lineTo(nx+nw*0.72, ny+torsoH*0.055); c.lineTo(nx-nw*0.72, ny+torsoH*0.055);
+    c.closePath(); c.fill();
+    const py0 = ny + torsoH*0.055, py1 = cuello + torsoH*(o.suit ? 0.46 : 0.60);
+    c.fillStyle = o.tie;
+    c.beginPath();
+    c.moveTo(nx-nw*0.72, py0); c.lineTo(nx+nw*0.72, py0);
+    c.lineTo(nx+nw*0.95, py1-torsoH*0.035); c.lineTo(nx, py1); c.lineTo(nx-nw*0.95, py1-torsoH*0.035);
+    c.closePath(); c.fill();
+    if (o.tiePat) {                                 /* rayas o puntitos */
+      c.save(); c.clip();
+      if (o.tiePat === 'stripe') {
+        c.strokeStyle = 'rgba(255,255,255,0.42)'; c.lineWidth = Math.max(0.8, shW*0.020);
+        for (let i=0;i<8;i++) {
+          const yy = py0 + i*(py1-py0)/7;
+          c.beginPath(); c.moveTo(nx-nw*1.2, yy); c.lineTo(nx+nw*1.2, yy - torsoH*0.045); c.stroke();
+        }
+      } else {
+        c.fillStyle = 'rgba(255,255,255,0.45)';
+        for (let i=0;i<9;i++) {
+          const yy = py0 + i*(py1-py0)/8;
+          c.fillRect(nx - nw*0.30, yy, Math.max(0.8, shW*0.017), Math.max(0.8, shW*0.017));
+          c.fillRect(nx + nw*0.14, yy + (py1-py0)/16, Math.max(0.8, shW*0.017), Math.max(0.8, shW*0.017));
+        }
+      }
+      c.restore();
+    }
+  }
+  /* americana: dos paneles y solapas */
+  if (o.suit) {
+    c.fillStyle = o.suit;
+    c.beginPath();                                  /* panel izquierdo */
+    c.moveTo(cx - shW*0.50, top);
+    c.lineTo(cx - vAncho*0.92, top);
+    c.lineTo(cx - vAncho*0.10, top + torsoH*0.52);
+    c.lineTo(cx - vAncho*0.10, top + torsoH);
+    c.lineTo(cx - shW*0.50, top + torsoH);
+    c.closePath(); c.fill();
+    c.beginPath();                                  /* panel derecho */
+    c.moveTo(cx + shW*0.50, top);
+    c.lineTo(cx + vAncho*0.92, top);
+    c.lineTo(cx + vAncho*0.10, top + torsoH*0.52);
+    c.lineTo(cx + vAncho*0.10, top + torsoH);
+    c.lineTo(cx + shW*0.50, top + torsoH);
+    c.closePath(); c.fill();
+    c.fillStyle = shade(o.suit, 1.16);              /* solapas */
+    for (const sx2 of [-1, 1]) {
+      c.beginPath();
+      c.moveTo(cx + sx2*vAncho*0.92, top);
+      c.lineTo(cx + sx2*vAncho*1.62, top + torsoH*0.10);
+      c.lineTo(cx + sx2*vAncho*0.10, top + torsoH*0.52);
+      c.closePath(); c.fill();
+    }
+    c.strokeStyle = 'rgba(0,0,0,0.30)'; c.lineWidth = Math.max(0.7, shW*0.014);
+    c.beginPath();
+    c.moveTo(cx - vAncho*0.10, top + torsoH*0.52); c.lineTo(cx - vAncho*0.10, top + torsoH);
+    c.moveTo(cx + vAncho*0.10, top + torsoH*0.52); c.lineTo(cx + vAncho*0.10, top + torsoH);
+    c.stroke();
+    ellipse(c, cx - vAncho*0.10, top + torsoH*0.60, shW*0.022, shW*0.022, shade(o.suit, 0.62));
+  }
+  /* carnet colgado del bolsillo */
+  if (o.badge) {
+    const bx = cx + shW*0.14, by = top + torsoH*0.30, bw = shW*0.20, bh = torsoH*0.15;
+    c.fillStyle = '#20242c'; roundRect(c, bx, by, bw, bh, bw*0.10, '#20242c');
+    c.fillStyle = '#c9ced6'; c.fillRect(bx+bw*0.10, by+bh*0.16, bw*0.34, bh*0.62);
+    c.fillStyle = '#8b93a0';
+    for (let i=0;i<3;i++) c.fillRect(bx+bw*0.52, by+bh*(0.22+i*0.22), bw*0.36, Math.max(0.7, bh*0.10));
+  }
+}
 function spriteOf(def, state, frame, vr) {
   frame = frame||0; vr = vr||0;
   const key = def.id+'|'+state+'|'+frame+'|'+vr;
@@ -1411,13 +1631,16 @@ function spriteOf(def, state, frame, vr) {
     if (state==='dead') { corpse(c,W,H,{shirt:look.shirt, skin:look.skin}); return; }
     look.swing = state==='walk' ? SWING[frame&3] : 0;
     if (state==='attack') { look.attack=true; look.shout=true; look.angry=true; }
-    if (def.quad) { drawQuad(c,W,H); c.save(); c.translate(0,-H*0.22); }
-    figure(c,W,H,look);
-    if (def.quad) c.restore();
-    if (def.id==='jorge') {
-      c.strokeStyle='#3a2a18'; c.lineWidth=W*0.035;
-      c.beginPath(); c.moveTo(W*0.86,H*0.42); c.lineTo(W*0.90,H*0.99); c.stroke();
-    }
+    if (def.quad) {
+      /* el conductor se dibuja primero y encogido, y el cuadron le tapa las
+         piernas; el manillar y los faros van por delante de todo */
+      c.save();
+      c.translate(W*0.5, 0); c.scale(0.72, 0.72); c.translate(-W*0.5, 0);
+      figure(c,W,H,look);
+      c.restore();
+      drawQuad(c,W,H);
+      drawQuadFront(c,W,H);
+    } else figure(c,W,H,look);
   });
 }
 /* jugadores: piel variable, ropa SIEMPRE blanca */
@@ -1935,6 +2158,14 @@ class Enemy {
     if (p && p.up && p.up.lifesteal && !p.down && (!NET.online || this.lastHitBy === G.meId))
       p.hp = Math.min(p.maxhp, p.hp + p.up.lifesteal);   /* solo cura a quien remata */
   }
+  aimAt(t, vel, lead) {                               /* adelanta el tiro segun el tier */
+    if (!t) return this.ang || 0;
+    if (!lead) return Math.atan2(t.y-this.y, t.x-this.x);
+    const d = dist(this.x, this.y, t.x, t.y);
+    const vuelo = d / Math.max(1, vel || 6);
+    const px = t.x + (t.velX||0)*vuelo*lead, py = t.y + (t.velY||0)*vuelo*lead;
+    return Math.atan2(py-this.y, px-this.x);
+  }
   nearestPlayer() {
     let best = null, bd = 1e9;
     for (const p of G.players.values()) {
@@ -1991,6 +2222,7 @@ class Enemy {
     if (!t) return;
     const d = dist(this.x,this.y,t.x,t.y);
     const toA = Math.atan2(t.y-this.y, t.x-this.x);
+    const aimA = this.aimAt(t, def.projSpeed, def.lead || 0);   /* para disparar */
     this.losT -= dt;
     if (this.losT<=0) { this.losT = 0.18+Math.random()*0.12; this.los = d < def.sight && hasLOS(this.x,this.y,t.x,t.y); }
     if (this.knock>0) { this.knock-=dt; moveEnt(this, this.knockX*dt*3.2, this.knockY*dt*3.2); }
@@ -2034,7 +2266,7 @@ class Enemy {
       } else if (def.attack === 'formula') {             /* Josue: formulas */
         this.burst = 3; this.burstT = 0; this.cd = def.cd*rate*1.6; this.anim = 0.45;
       } else if (def.attack === 'poison') {              /* David: charcos */
-        this.shoot(toA, 'poison', def.projSpeed, this.dmg, { poison:true, scale:0.34 });
+        this.shoot(aimA, 'poison', def.projSpeed, this.dmg, { poison:true, scale:0.34 });
         this.cd = def.cd*rate; this.anim = 0.45;
       } else if (def.attack === 'hell') {                /* Jorge: bullet hell */
         this.tele = 0.55; this.teleKind = 'hell';        /* aviso antes de la descarga */
@@ -2055,6 +2287,12 @@ class Enemy {
         }
         if (n) { Snd.tone(680, 0.2, 'sine', 0.05, 980); this.anim = 0.5; }
         this.cd = def.cd*rate;
+      } else if (def.volley) {                           /* jefe que ademas abre fuego */
+        const n = this.phase2 ? def.volley + 2 : def.volley;
+        for (let i=0;i<n;i++)
+          this.shoot(aimA + (i-(n-1)/2)*0.17, def.volleySpr || 'boss', def.projSpeed,
+                     this.dmg*(def.volleyMul || 0.6), { scale:0.30 });
+        this.cd = def.cd*rate; this.anim = 0.4;
       } else if (def.kind === 'ranged') {                /* vigilante raso */
         this.shoot(toA+rnd(-0.06,0.06), 'bullet', def.projSpeed, this.dmg, {scale:0.22});
         this.cd = def.cd*rate; this.anim = 0.3;
@@ -2072,8 +2310,11 @@ class Enemy {
       this.tele -= dt;
       if (this.tele <= 0) {
         if (this.teleKind === 'hell') {
-          const n = this.phase2 ? 12 : 8, base = toA + rnd(-0.2,0.2);
+          const n = this.phase2 ? 14 : 10, base = aimA + rnd(-0.2,0.2);
           for (let i=0;i<n;i++) this.shoot(base + i*TAU/n, 'boss', def.projSpeed, this.dmg, {scale:0.30});
+          const m = this.phase2 ? 7 : 5;             /* y un abanico dirigido, mas rapido */
+          for (let i=0;i<m;i++)
+            this.shoot(aimA + (i-(m-1)/2)*0.13, 'boss', def.projSpeed*1.35, this.dmg, {scale:0.30});
           Snd.at(this.x,this.y).roar();
         } else if (this.teleKind === 'leap') {
           this.dashing = def.leapTime;
@@ -2090,7 +2331,7 @@ class Enemy {
     if (this.aiming > 0) {                              /* el francotirador telegrafia */
       this.aiming -= dt;
       if (this.aiming <= 0 && this.los) {
-        this.shoot(toA, 'bullet', def.projSpeed, this.dmg, { scale:0.26 });
+        this.shoot(this.aimAt(t, def.projSpeed, def.lead || 0), 'bullet', def.projSpeed, this.dmg, { scale:0.26 });
         Snd.tone(900, 0.12, 'square', 0.05, 300);
       }
     }
@@ -4653,6 +4894,7 @@ function frame(now) {
       if (G.upgT <= 0) { addMsg('SE ACABÓ EL TIEMPO DE ELEGIR', '#ffd45e'); openPortalAfterUpgrades(); }
     }
     if (G.isHost && (G.state === 'run' || G.state === 'pause' || G.state === 'upgrade')) {
+      trackPlayerVel(dt);
       G.flowT -= dt;
       if (G.flowT <= 0) { G.flowT = 0.3; buildFlows([...G.players.values()].filter(q=>!q.down)); }
       for (const e of G.enemies) e.update(dt);
