@@ -2630,16 +2630,22 @@ function updateParts(dt) {
   for (let i=G.feed.length-1;i>=0;i--) { G.feed[i].t-=dt; if (G.feed[i].t<=0) G.feed.splice(i,1); }
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
   for (let i=G.msgs.length-1;i>=0;i--) { G.msgs[i].t-=dt; if (G.msgs[i].t<=0) G.msgs.splice(i,1); }
-  if (G.motes.length<30) for (let i=G.motes.length;i<30;i++) {
-    const p = me() || {x:MAP.spawn.x,y:MAP.spawn.y};
+  /* el polvo en suspension acompana a cada pantalla, no solo a la del J1 */
+  const ojos = localesVivos();
+  const cerca = ojos.length ? ojos : [me()].filter(Boolean);
+  const tope = 30 * Math.max(1, cerca.length);
+  if (cerca.length && G.motes.length < tope) for (let i=G.motes.length;i<tope;i++) {
+    const p = cerca[i % cerca.length];
     G.motes.push({ x:p.x+rnd(-7,7), y:p.y+rnd(-7,7), z:rnd(0.15,1.05),
       vx:rnd(-0.09,0.09), vy:rnd(-0.09,0.09), vz:rnd(-0.03,0.05), a:rnd(0.12,0.4) });
   }
-  const p = me();
-  if (p) for (const m of G.motes) {
+  if (cerca.length) for (const m of G.motes) {
     m.x+=m.vx*dt; m.y+=m.vy*dt; m.z+=m.vz*dt;
     if (m.z>1.1||m.z<0.1) m.vz=-m.vz;
-    if (dist2(m.x,m.y,p.x,p.y)>64 || hitsWall(m.x,m.y,0.02)) {
+    let visto = false;
+    for (const p of cerca) if (dist2(m.x,m.y,p.x,p.y) <= 64) { visto = true; break; }
+    if (!visto || hitsWall(m.x,m.y,0.02)) {
+      const p = cerca[(Math.random()*cerca.length)|0];
       m.x=p.x+rnd(-7,7); m.y=p.y+rnd(-7,7); m.z=rnd(0.15,1.05);
     }
   }
