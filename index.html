@@ -1435,17 +1435,26 @@ function figure(c, W, H, o) {
     arm(-shW/2-armW*0.15, -0.10+sw*0.42); arm(shW/2+armW*0.15, 0.10+sw*0.42);
     marcaMano(shW/2+armW*0.15, 0.10+sw*0.42);
   }
-  /* cuello y cabeza */
-  c.fillStyle = skinD; c.fillRect(cx-headRX*0.28, bodyTop-headH*0.10, headRX*0.56, headH*0.14);
+  /* cuello y cabeza: el cuello nace en la barbilla, sea cual sea su largo */
+  const bajo = (o.chin !== undefined && o.chin < 1) ? o.chin : 1;
+  const barbilla = headCY + headRY*bajo*0.86;
+  c.fillStyle = skinD;
+  c.fillRect(cx-headRX*0.28, barbilla, headRX*0.56, Math.max(headH*0.14, bodyTop + headH*0.04 - barbilla));
   if (o.noJaw) {                                    /* cabeza sin mandibula */
     c.beginPath(); c.ellipse(cx, headCY, headRX, headRY, 0, Math.PI, TAU); c.fillStyle=skin; c.fill();
     c.fillRect(cx-headRX, headCY, headRX*2, headRY*0.35);
     c.fillStyle='rgba(0,0,0,0.55)'; c.fillRect(cx-headRX*0.55, headCY+headRY*0.30, headRX*1.1, headRY*0.28);
+  } else if (o.chin !== undefined && o.chin < 1) {
+    /* craneo normal pero mandibula recortada: la cara acaba justo bajo la boca */
+    c.fillStyle = skin;
+    c.beginPath(); c.ellipse(cx, headCY, headRX, headRY, 0, Math.PI, TAU); c.fill();
+    c.beginPath(); c.ellipse(cx, headCY, headRX*0.94, headRY*o.chin, 0, 0, Math.PI); c.fill();
   } else {
     ellipse(c, cx, headCY, headRX, headRY, skin);
   }
-  ellipse(c, cx-headRX*0.97, headCY+headRY*0.05, headRX*0.14, headRY*0.20, skinD);
-  ellipse(c, cx+headRX*0.97, headCY+headRY*0.05, headRX*0.14, headRY*0.20, skinD);
+  /* las orejas bajan con el menton igual que el resto */
+  ellipse(c, cx-headRX*0.97, headCY+headRY*0.05*bajo, headRX*0.14, headRY*0.20*bajo, skinD);
+  ellipse(c, cx+headRX*0.97, headCY+headRY*0.05*bajo, headRX*0.14, headRY*0.20*bajo, skinD);
   if (o.hairStyle !== undefined && o.hairStyle !== null) {
     drawHairStyle(c, o.hairStyle, cx, headCY, headRX, headRY, o.hair || '#2a1f18', o.headroom || 0);
   } else if (o.hair) {
@@ -1508,7 +1517,7 @@ function figure(c, W, H, o) {
   if (o.glasses) {
     c.strokeStyle = o.glassCol||'#141414';
     c.lineWidth = Math.max(1, headRX*(o.thinGlass ? 0.035 : 0.09));
-    const gw = eyeR*2.5, gh = eyeR*(o.thinGlass ? 1.7 : 2.1);
+    const gw = eyeR*(headRX < headRY*0.86 ? 2.2 : 2.5), gh = eyeR*(o.thinGlass ? 1.7 : 2.1);
     if (!o.thinGlass) {                             /* montura gruesa: cristal tintado */
       c.fillStyle = 'rgba(190,225,255,0.30)';
       c.fillRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.fillRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
@@ -1525,17 +1534,17 @@ function figure(c, W, H, o) {
     c.moveTo(cx+eyeDX+gw/2, eyeY); c.lineTo(cx+headRX, eyeY-gh*0.2); c.stroke();
   }
   if (!o.noJaw) {
-    ellipse(c, cx, eyeY+headRY*0.26, headRX*0.11, headRY*0.10, skinD);
+    ellipse(c, cx, eyeY+headRY*0.26*bajo, headRX*0.11, headRY*0.10*bajo, skinD);
     c.fillStyle = '#5a1f1f';
-    if (o.shout) ellipse(c, cx, eyeY+headRY*0.55, headRX*0.24, headRY*0.20, '#5a1f1f');
-    else c.fillRect(cx-headRX*0.26, eyeY+headRY*0.52, headRX*0.52, headRY*0.07);
+    if (o.shout) ellipse(c, cx, eyeY+headRY*0.55*bajo, headRX*0.24, headRY*0.20*bajo, '#5a1f1f');
+    else c.fillRect(cx-headRX*0.26, eyeY+headRY*0.52*bajo, headRX*0.52, headRY*0.07);
   }
   if (o.mustache) {                                 /* bigote justo sobre el labio */
     c.fillStyle = o.hair2 || shade(o.hair||'#2b2b2b', 0.80);
     c.beginPath();
-    c.ellipse(cx, eyeY+headRY*0.44, headRX*0.32, headRY*0.075, 0, Math.PI, TAU);
+    c.ellipse(cx, eyeY+headRY*0.44*bajo, headRX*0.32, headRY*0.075*bajo, 0, Math.PI, TAU);
     c.fill();
-    c.fillRect(cx-headRX*0.32, eyeY+headRY*0.43, headRX*0.64, headRY*0.05);
+    c.fillRect(cx-headRX*0.32, eyeY+headRY*0.43*bajo, headRX*0.64, headRY*0.05);
   }
   if (o.smile) {                                    /* sonrisa ancha con dientes */
     c.fillStyle = '#3a1414';
@@ -1548,7 +1557,7 @@ function figure(c, W, H, o) {
   if (o.beard) {                                    /* barba corta / sombra */
     c.fillStyle = 'rgba(30,24,20,' + (o.beard === 2 ? 0.55 : 0.28) + ')';
     c.beginPath();
-    c.ellipse(cx, eyeY+headRY*0.42, headRX*0.72, headRY*0.52, 0, 0, Math.PI);
+    c.ellipse(cx, eyeY+headRY*0.42*bajo, headRX*0.72, headRY*0.52*bajo, 0, 0, Math.PI);
     c.fill();
   }
   if (o.beardFull) {                                /* barba cerrada, con bigote unido */
@@ -1559,17 +1568,17 @@ function figure(c, W, H, o) {
     c.clip();
     c.fillStyle = bc;
     c.beginPath();                                  /* mandibula y menton */
-    c.ellipse(cx, eyeY+headRY*0.30, headRX*0.90, headRY*0.86, 0, 0, Math.PI);
+    c.ellipse(cx, eyeY+headRY*0.30*bajo, headRX*0.90, headRY*0.86*bajo, 0, 0, Math.PI);
     c.fill();
-    c.fillRect(cx-headRX*0.90, eyeY+headRY*0.30, headRX*0.34, headRY*0.60);
-    c.fillRect(cx+headRX*0.56, eyeY+headRY*0.30, headRX*0.34, headRY*0.60);
+    c.fillRect(cx-headRX*0.90, eyeY+headRY*0.30*bajo, headRX*0.34, headRY*0.60*bajo);
+    c.fillRect(cx+headRX*0.56, eyeY+headRY*0.30*bajo, headRX*0.34, headRY*0.60*bajo);
     c.restore();
     c.fillStyle = bc;                               /* bigote */
     c.beginPath();
-    c.ellipse(cx, eyeY+headRY*0.40, headRX*0.40, headRY*0.11, 0, Math.PI, TAU);
+    c.ellipse(cx, eyeY+headRY*0.40*bajo, headRX*0.40, headRY*0.11*bajo, 0, Math.PI, TAU);
     c.fill();
     c.fillStyle = skin;                             /* labio al descubierto */
-    ellipse(c, cx, eyeY+headRY*0.545, headRX*0.24, headRY*0.055, skin);
+    ellipse(c, cx, eyeY+headRY*0.545*bajo, headRX*0.24, headRY*0.055*bajo, skin);
   }
   if (o.old) {
     c.strokeStyle='rgba(0,0,0,0.25)'; c.lineWidth=Math.max(1, headRX*0.045);
@@ -1674,18 +1683,24 @@ const ENEMIES = {
     look:{ shirt:'#f2f2f2', pants:'#d8d8d8', hair:'#1d1d1d', headRatio:0.26, redEyes:true, angry:true, shout:true } }
 };
 const MINIBOSSES = {
-  ricky:    { id:'ricky', name:'RICKY', mini:true, hp:520, speed:2.0, radius:0.34, scaleX:0.48, scaleY:1.12,
-    kind:'ranged', dmg:12, cd:1.5, projSpeed:7.0, sight:22, score:1200, tex:{w:120,h:230}, drop:1,
+  ricky:    { id:'ricky', name:'RICKY', mini:true, hp:520, speed:2.0, radius:0.24, scaleX:0.34, scaleY:1.22,
+    kind:'ranged', dmg:12, cd:1.5, projSpeed:7.0, sight:22, score:1200, tex:{w:98,h:252}, drop:1,
     attack:'excel', summon:'robot', summonN:2, summonMax:4,
-    look:{ shirt:'#3b7a8c', pants:'#24424c', hair:'#4a3524', headRatio:0.24, shoulders:0.40, noJaw:true, angry:true } },
+    look:{ skin:'#b98a5e', shirt:'#232a36', pants:'#1c222c', hair:'#181208',
+           headRatio:0.19, shoulders:0.30, headWide:0.86, chin:0.34,
+           suit:'#232a36', dress:'#f4f6f8', tie:'#2f7f97',
+           glasses:true, glassCol:'#2b2b30', angry:true } },
   miguelito:{ id:'miguelito', name:'MIGUELITO', mini:true, hp:640, speed:1.5, radius:0.52, scaleX:1.02, scaleY:0.86,
     kind:'ranged', dmg:14, cd:1.3, projSpeed:5.4, sight:20, score:1300, tex:{w:170,h:190}, drop:1,
     attack:'music',
     look:{ shirt:'#8e44ad', pants:'#4a235a', hair:'#2b2b2b', headRatio:0.26, shoulders:1.00, headWide:1.2, angry:true, emoji:'🎺' } },
-  josue:    { id:'josue', name:'JOSUE', mini:true, hp:700, speed:1.3, radius:0.50, scaleX:0.95, scaleY:1.02,
-    kind:'ranged', dmg:13, cd:1.15, projSpeed:6.2, sight:21, score:1350, tex:{w:165,h:215}, drop:1,
+  josue:    { id:'josue', name:'JOSUE', mini:true, hp:700, speed:1.3, radius:0.38, scaleX:0.62, scaleY:1.06,
+    kind:'ranged', dmg:13, cd:1.15, projSpeed:6.2, sight:21, score:1350, tex:{w:132,h:224}, drop:1,
     attack:'formula',
-    look:{ shirt:'#27ae60', pants:'#1e5f3a', hair:'#3a2a1c', headRatio:0.25, shoulders:0.94, headWide:1.15, glasses:true, emoji:'🧮' } },
+    look:{ skin:'#b07b4e', shirt:'#2b2d33', pants:'#232529', hair:'#120d08',
+           headRatio:0.25, shoulders:0.64, headWide:1.04,
+           suit:'#2b2d33', dress:'#f6f6f2', tie:'#9aa0a8', tiePat:'stripe',
+           glasses:true, glassCol:'#22222a', beardFull:true, beardCol:'#171008', angry:true } },
 
   /* Castells no ronda ni telegrafia: va a por ti y no para. */
   castells: { id:'castells', name:'CASTELLS', mini:true, hp:820, speed:3.2, radius:0.29,
