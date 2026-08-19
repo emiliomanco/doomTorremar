@@ -1491,6 +1491,24 @@ function figure(c, W, H, o) {
         c.beginPath(); c.ellipse(cx, headCY-headRY*0.78, headRX*0.98, headRY*0.30, 0, Math.PI, TAU); c.fill();
       }
     }
+    if (o.streak) {                                 /* mechon blanco a un lado */
+      c.save();
+      c.beginPath();
+      c.ellipse(cx, headCY-headRY*0.36, headRX*1.02, headRY*0.62, 0, Math.PI, TAU);
+      c.rect(cx-headRX*1.02, headCY-headRY*0.42, headRX*2.04, headRY*0.22);
+      c.clip();
+      c.fillStyle = o.streakCol || '#e8e6df';
+      const sx3 = o.streak < 0 ? -1 : 1;
+      c.beginPath();
+      c.moveTo(cx + sx3*headRX*0.30, headCY-headRY*1.10);
+      c.quadraticCurveTo(cx + sx3*headRX*0.62, headCY-headRY*0.80,
+                         cx + sx3*headRX*0.64, headCY-headRY*0.20);
+      c.lineTo(cx + sx3*headRX*0.40, headCY-headRY*0.20);
+      c.quadraticCurveTo(cx + sx3*headRX*0.40, headCY-headRY*0.78,
+                         cx + sx3*headRX*0.16, headCY-headRY*1.10);
+      c.closePath(); c.fill();
+      c.restore();
+    }
     if (o.greyTemples) {                            /* canas: mechas dentro del pelo */
       c.save();
       c.beginPath();
@@ -1683,8 +1701,8 @@ const ENEMIES = {
     look:{ shirt:'#f2f2f2', pants:'#d8d8d8', hair:'#1d1d1d', headRatio:0.26, redEyes:true, angry:true, shout:true } }
 };
 const MINIBOSSES = {
-  ricky:    { id:'ricky', name:'RICKY', mini:true, hp:520, speed:2.0, radius:0.24, scaleX:0.34, scaleY:1.22,
-    kind:'ranged', dmg:12, cd:1.5, projSpeed:7.0, sight:22, score:1200, tex:{w:98,h:252}, drop:1,
+  ricky:    { id:'ricky', name:'RICKY', mini:true, hp:520, speed:2.0, radius:0.24, scaleX:0.34, scaleY:1.36,
+    kind:'ranged', dmg:12, cd:1.5, projSpeed:7.0, sight:22, score:1200, tex:{w:100,h:250}, drop:1,
     attack:'excel', summon:'robot', summonN:2, summonMax:4,
     look:{ skin:'#b98a5e', shirt:'#232a36', pants:'#1c222c', hair:'#181208',
            headRatio:0.19, shoulders:0.30, headWide:0.86, chin:0.34,
@@ -1694,13 +1712,14 @@ const MINIBOSSES = {
     kind:'ranged', dmg:14, cd:1.3, projSpeed:5.4, sight:20, score:1300, tex:{w:170,h:190}, drop:1,
     attack:'music',
     look:{ shirt:'#8e44ad', pants:'#4a235a', hair:'#2b2b2b', headRatio:0.26, shoulders:1.00, headWide:1.2, angry:true, emoji:'🎺' } },
-  josue:    { id:'josue', name:'JOSUE', mini:true, hp:700, speed:1.3, radius:0.38, scaleX:0.62, scaleY:1.06,
-    kind:'ranged', dmg:13, cd:1.15, projSpeed:6.2, sight:21, score:1350, tex:{w:132,h:224}, drop:1,
+  josue:    { id:'josue', name:'JOSUE', mini:true, hp:700, speed:1.3, radius:0.46, scaleX:0.84, scaleY:1.04,
+    kind:'ranged', dmg:13, cd:1.15, projSpeed:6.2, sight:21, score:1350, tex:{w:168,h:224}, drop:1,
     attack:'formula',
     look:{ skin:'#b07b4e', shirt:'#2b2d33', pants:'#232529', hair:'#120d08',
-           headRatio:0.25, shoulders:0.64, headWide:1.04,
+           headRatio:0.25, shoulders:0.88, headWide:1.12,
            suit:'#2b2d33', dress:'#f6f6f2', tie:'#9aa0a8', tiePat:'stripe',
-           glasses:true, glassCol:'#22222a', beardFull:true, beardCol:'#171008', angry:true } },
+           glasses:true, glassCol:'#22222a', beardFull:true, beardCol:'#171008',
+           streak:1, streakCol:'#e8e6df', angry:true } },
 
   /* Castells no ronda ni telegrafia: va a por ti y no para. */
   castells: { id:'castells', name:'CASTELLS', mini:true, hp:820, speed:3.2, radius:0.29,
