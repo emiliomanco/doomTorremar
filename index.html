@@ -258,6 +258,8 @@
     <div class="lbar" id="host-controls">
       <span class="muted">DIFICULTAD</span>
       <select id="sel-diff"></select>
+      <span class="muted">MEJORAS</span>
+      <select id="sel-upg"><option value="1">Activadas</option><option value="0">Desactivadas</option></select>
       <span class="muted" id="ff-label">FUEGO AMIGO</span>
       <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select>
     </div>
@@ -275,7 +277,17 @@
   <div class="panel col">
     <div class="muted">Pulsa un botón y luego la tecla nueva. También admite botones del ratón.</div>
     <div class="keys" id="key-list"></div>
-    <div class="row"><button id="btn-keys-reset">RESTAURAR</button><button id="btn-keys-back" class="go">GUARDAR Y VOLVER</button></div>
+    <div class="warn" id="keys-warn"></div>
+    <div class="row">
+      <button id="btn-fullscreen">PANTALLA COMPLETA</button>
+      <button id="btn-keys-reset">RESTAURAR</button>
+      <button id="btn-keys-back" class="go">GUARDAR Y VOLVER</button>
+    </div>
+    <div class="muted" style="font-size:12px;max-width:640px;text-align:center">
+      CTRL, ALT y ⌘ los usa el navegador para sus propios atajos: con CTRL pulsado,
+      la W cierra la pestaña. En pantalla completa el juego se queda con el teclado
+      y sí se pueden usar.
+    </div>
   </div>
 </div>
 
@@ -477,8 +489,8 @@ function warmSkin(hex) {
 /* ------------------------- teclas reasignables ----------------------- */
 const DEFAULT_KEYS = {
   forward:'KeyW', back:'KeyS', left:'KeyA', right:'KeyD',
-  sprint:'ShiftLeft', crouch:'ControlLeft', jump:'Space', dash:'KeyF',
-  fire:'Mouse0', alt:'Mouse2', reload:'KeyR', heal:'KeyH',
+  sprint:'ShiftLeft', crouch:'KeyC', jump:'Space', dash:'KeyF',
+  fire:'Mouse0', alt:'Mouse2', reload:'KeyR', heal:'KeyH', nade:'KeyG',
   w1:'Digit1', w2:'Digit2', w3:'Digit3', w4:'Digit4', w5:'Digit5',
   map:'Tab', mute:'KeyM'
 };
@@ -486,13 +498,13 @@ const KEY_LABELS = {
   forward:'Avanzar', back:'Retroceder', left:'Desplazarse a la izquierda', right:'Desplazarse a la derecha',
   sprint:'Sprint (gasta estamina)', crouch:'Agacharse (hitbox reducida)', jump:'Saltar',
   dash:'Dash / esquivar (i-frames)', fire:'Disparar', alt:'Fuego alternativo', reload:'Recargar',
-  heal:'Cantimplora (curar)',
+  heal:'Cantimplora (curar)', nade:'Lanzar granada (sin cambiar de arma)',
   w1:'1 · Machete', w2:'2 · Glock 19', w3:'3 · Remington 870', w4:'4 · M16', w5:'5 · Frag Grenade',
   map:'Mapa', mute:'Silenciar'
 };
 const KEY_SECTIONS = [
   { title:'MOVIMIENTO', keys:['forward','back','left','right','sprint','crouch','jump','dash'] },
-  { title:'COMBATE',    keys:['fire','alt','reload','heal'] },
+  { title:'COMBATE',    keys:['fire','alt','nade','reload','heal'] },
   { title:'ARMAS',      keys:['w1','w2','w3','w4','w5'] },
   { title:'INTERFAZ',   keys:['map','mute'] }
 ];
@@ -500,8 +512,20 @@ let KEYS = Object.assign({}, DEFAULT_KEYS);
 try {
   const saved = JSON.parse(localStorage.getItem('torremar.keys') || 'null');
   if (saved) for (const k in DEFAULT_KEYS) if (saved[k]) KEYS[k] = saved[k];
+  /* Con CTRL agachado, cualquier WASD dispara un atajo del navegador y
+     CTRL+W cierra la pestana. Se rescata una sola vez a quien lo tuviera
+     guardado de antes; si lo vuelve a poner a mano, se respeta. */
+  if (saved && saved.crouch === 'ControlLeft' && !saved.ctrlFix) {
+    KEYS.crouch = 'KeyC';
+    try { localStorage.setItem('torremar.keys', JSON.stringify(Object.assign({}, KEYS, { ctrlFix:1 }))); } catch (e) {}
+  }
 } catch (e) {}
-function saveKeys() { try { localStorage.setItem('torremar.keys', JSON.stringify(KEYS)); } catch (e) {} }
+function saveKeysFlag() {
+  try { localStorage.setItem('torremar.keys', JSON.stringify(Object.assign({}, KEYS, { ctrlFix:1 }))); } catch (e) {}
+}
+/* teclas que el navegador se queda para si fuera de pantalla completa */
+const TECLAS_RIESGO = ['ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight'];
+function saveKeys() { saveKeysFlag(); }
 function keyName(code) {
   if (!code) return '—';
   if (code.startsWith('Mouse')) return 'RATÓN ' + (code.slice(5) === '0' ? 'IZQ' : code.slice(5) === '2' ? 'DER' : code.slice(5));
@@ -2299,7 +2323,7 @@ const G = {
   players:new Map(),            // id -> jugador (incluido el local)
   meId:'', hostId:'', isHost:false,
   enemies:[], projectiles:[], items:[], pools:[], parts:[], fx:[], motes:[], props:[],
-  diff:2, ff:0, nPlayers:1,
+  diff:2, ff:0, upgOn:1, nPlayers:1,
   msgs:[], time:0, kills:0, startedAt:0,
   bossRef:null, cineT:0, flowT:0, netT:0, seq:0, over:false, win:false, hitStop:0,
   dmgNums:[], feed:[], combo:0, comboT:0, decals:[], holes:[], flick:0, flickT:2, mod:null,
@@ -2912,6 +2936,7 @@ function initLocal(p) {
   p.exhausted = false;
   p.hitMark = 0; p.headMark = 0; p.killMark = 0; p.triggerHeld = false; p.usedCheat = 0;
   p.altHeld = false; p.burstLeft = 0; p.burstT = 0; p.burstAlt = 0; p.zoomT = 0; p.inBurst = 0;
+  p.nadeCd = 0; p.nadeHeld = false;
   p.slideT = 0; p.slideCd = 0; p.slideAX = 0; p.slideAY = 0; p.wasSprint = 0;
   applyUpgradeStats(p);
 }
@@ -3073,6 +3098,25 @@ function fire(p, alt) {
   else Snd.m16();
   if (alt && p.weapon === 2) Snd.tone(70,0.30,'sawtooth',0.10,26);   /* la posta pega mas grave */
   NET.send({ t:'shot', id:p.id, w:p.weapon, x:p.x, y:p.y, a:p.ang, alt:alt?1:0 });
+}
+/* Granada rapida: se lanza sin soltar el arma que llevas en la mano. Gasta
+   del mismo saco que la Frag Grenade y tiene su propia espera, para que no
+   se pueda encadenar con el disparo normal. */
+function quickNade(p) {
+  if (!p || p.down || p.nadeCd > 0 || p.switching > 0) return;
+  if (p.ammo.nades <= 0) { Snd.empty(); addMsg('SIN GRANADAS', '#ff6b6b'); return; }
+  const w = WEAPONS[4];
+  p.ammo.nades--;
+  p.nadeCd = 1.15;
+  p.cool = Math.max(p.cool, 0.30);                      /* pequeno paron al lanzar */
+  p.anim = 0.3; p.kick = Math.max(p.kick, 10);
+  const vel = 7.6, mecha = 2.2;
+  G.projectiles.push({ id:entId++, x:p.x+IN.dirX*0.4, y:p.y+IN.dirY*0.4,
+    vx:IN.dirX*vel, vy:IN.dirY*vel, vz:3.1, z:0.75, grav:1, dmg:0, r:0.16, spr:'nade',
+    from:'player', owner:p.id, life:9, fuse:mecha, bounces:6, scale:0.30 });
+  Snd.pin(); Snd.throwN();
+  alertNoise(w.noise);
+  NET.send({ t:'nade', x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
 }
 function alertNoise(radius) {
   for (const e of G.enemies) {
@@ -3300,6 +3344,7 @@ function updateLocal(p, dt) {
   p.headMark = Math.max(0, (p.headMark||0)-dt);
   p.killMark = Math.max(0, p.killMark-dt);
   p.slideCd = Math.max(0, (p.slideCd||0)-dt);
+  p.nadeCd = Math.max(0, (p.nadeCd||0)-dt);
   p.recoil = Math.max(0, p.recoil - dt*(p.cool>0?0.35:1.5));
   p.pitch *= (1-dt*0.7);
   if (p.hurtMarks) for (let i=p.hurtMarks.length-1;i>=0;i--) { p.hurtMarks[i].t-=dt*1.4; if (p.hurtMarks[i].t<=0) p.hurtMarks.splice(i,1); }
@@ -3408,6 +3453,10 @@ function updateLocal(p, dt) {
   else if (shooting && (w.auto || !p.triggerHeld) && !alting) fire(p);
   p.triggerHeld = shooting; p.altHeld = alting;
   p.zoomT = Math.max(0, (p.zoomT||0) - dt);
+
+  /* ---------- granada rapida ---------- */
+  if (down('nade') && !p.nadeHeld) quickNade(p);
+  p.nadeHeld = down('nade');
 
   /* ---------- recarga manual ---------- */
   if (down('reload') && !p.reloadHeld) startReload(p);
@@ -3616,7 +3665,7 @@ function updateExitCircle(dt) {
 function roomCleared() {
   G.roomState = 'cleared';
   G.cleared++;
-  if (UPGRADE_ROOMS.includes(G.room) || BOSS_ROOMS[G.room]) {
+  if (G.upgOn && (UPGRADE_ROOMS.includes(G.room) || BOSS_ROOMS[G.room])) {
     /* todos eligen su mejora: el portal no se abre hasta que acaben */
     G.upgWait = new Set([...G.players.values()].map(q => q.id));
     G.upgT = 40;
@@ -3702,7 +3751,7 @@ const NET = {
         const hairCol = /^#[0-9a-f]{6}$/i.test(md.hairCol || '') ? md.hairCol : pick(HAIR_NAT);
         const pl = makePlayer(id, md.nick ? String(md.nick).slice(0,16) : 'JUGADOR', skin, order, fit, hair, hairCol);
         G.players.set(id, pl);
-        conn.send(JSON.stringify({ t:'welcome', you:id, host:'HOST', players:serializePlayers(), diff:G.diff, ff:G.ff }));
+        conn.send(JSON.stringify({ t:'welcome', you:id, host:'HOST', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }));
         this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
         renderLobby();
         addMsg(pl.nick + ' SE HA UNIDO', '#8ce89b');
@@ -3841,6 +3890,7 @@ function onNet(from, m) {
   switch (m.t) {
     case 'welcome': {
       G.meId = m.you; G.hostId = m.host; G.diff = m.diff; G.ff = m.ff;
+      if (m.up !== undefined) G.upgOn = m.up;
       G.players.clear();
       for (const s of m.players) {
         const p = makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol);
@@ -3855,6 +3905,7 @@ function onNet(from, m) {
     }
     case 'lobby': {
       G.diff = m.diff; G.ff = m.ff;
+      if (m.up !== undefined) G.upgOn = m.up;
       const old = new Map(G.players);
       G.players.clear();
       for (const s of m.players) {
@@ -3872,7 +3923,8 @@ function onNet(from, m) {
     }
     case 'full': alert('La sala está llena.'); backToMenu(); break;
     case 'kicked': alert('El anfitrión te ha expulsado.'); backToMenu(); break;
-    case 'start': G.diff = m.diff; G.ff = m.ff; G.nPlayers = m.n; beginRun(m.room, m.seed); break;
+    case 'start': G.diff = m.diff; G.ff = m.ff; G.upgOn = (m.up === undefined ? 1 : m.up);
+      G.nPlayers = m.n; beginRun(m.room, m.seed); break;
     case 'room': startRoom(m.n, m.seed); break;
     case 'world': if (!G.isHost) applySnapshot(m); break;
     case 'pstate': {
@@ -3917,7 +3969,7 @@ function onNet(from, m) {
       const p = G.players.get(m.id);
       if (p) { p.nick = m.nick || p.nick; p.skin = m.skin || p.skin; p.fit = m.fit|0;
                p.hair = m.hair|0; p.hairCol = m.hairCol || p.hairCol; }
-      if (G.isHost) { relay(from, m); NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff }); }
+      if (G.isHost) { relay(from, m); NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }); }
       if (G.state === 'menu' || G.state === 'lobby') renderLobby();
       break;
     }
@@ -4853,7 +4905,10 @@ function renderHUD() {
   } else {
     bigText(w.ammo ? String(p.ammo[w.ammo]) : '∞', x2+aw/2, top+62*s, (38*s)|0, '#ffd45e');
   }
-  bigText('🥤 '+p.canteen+'/'+p.canteenMax, x2+aw/2, top+84*s, (16*s)|0, '#8ce89b');
+  /* cantimplora y granadas comparten linea: la barra no da para dos */
+  bigText('🥤 '+p.canteen+'/'+p.canteenMax, x2+aw*0.28, top+82*s, (15*s)|0, '#8ce89b');
+  bigText('🧨 '+p.ammo.nades+' ·'+keyName(KEYS.nade), x2+aw*0.72, top+82*s, (13*s)|0,
+          (p.nadeCd||0) > 0 ? '#6b6155' : '#ffb347');
   /* arma y ranuras */
   x2 += aw + pad;
   const ww = Math.max(150*s, W - x2 - pad);
@@ -4904,7 +4959,7 @@ function renderHUD() {
     ctx.strokeRect(cxb, cy, cw, ch);
     const etq = G.room === 0 ? 'ZONA SEGURA'
               : (BOSS_ROOMS[G.room] ? 'SALA ' + G.room + ' · JEFE'
-              : (UPGRADE_ROOMS.includes(G.room) ? 'SALA ' + G.room + ' · BOTÍN'
+              : (G.upgOn && UPGRADE_ROOMS.includes(G.room) ? 'SALA ' + G.room + ' · BOTÍN'
               : 'SALA ' + G.room + ' / ' + TOTAL_ROOMS));
     bigText(etq, W/2, cy+ch*0.60, clamp(cw/(etq.length*0.60), 11*s, 19*s)|0,
             boss ? '#ff9a7a' : '#ffe6a8');
@@ -5076,14 +5131,25 @@ function renderLobby() {
   $('code-row').style.display = online ? 'flex' : 'none';
   $('empty-list').style.display = online ? 'flex' : 'none';
   $('btn-start').style.display = mando ? '' : 'none';
+  $('sel-upg').value = String(G.upgOn ? 1 : 0);
+  const sinMej = G.upgOn ? '' : ' · SIN MEJORAS: no habrá botín en las salas 5, 15, 25, 35 ni 45';
   $('lobby-hint').textContent = !online
-    ? 'Partida en solitario. Elige dificultad y dale a START.'
+    ? 'Partida en solitario. Elige dificultad y dale a START.' + sinMej
     : (mando ? 'Hasta 8 jugadores. Cuantos más entren, más enemigos habrá y más fuertes serán (los jefes, aún más).'
-             : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':''));
+             : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':'')) + sinMej;
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
   $('lobby-title').textContent = online
     ? 'SALA DE ESPERA · ' + G.players.size + '/' + MAX_PLAYERS
     : 'PARTIDA EN SOLITARIO';
+}
+function avisoTeclas() {
+  const malas = [];
+  for (const k in KEYS) if (TECLAS_RIESGO.includes(KEYS[k])) malas.push(KEY_LABELS[k] || k);
+  const el = $('keys-warn');
+  if (!el) return;
+  el.textContent = malas.length && !enPantallaCompleta()
+    ? '⚠ ' + malas.join(', ') + ' usa una tecla que el navegador intercepta. Pon PANTALLA COMPLETA o cámbiala.'
+    : '';
 }
 function renderKeys() {
   const box = $('key-list');
@@ -5119,6 +5185,7 @@ function renderKeys() {
     }
     box.appendChild(grid);
   }
+  avisoTeclas();
 }
 /* ------------------------- pantalla de personaje --------------------- */
 let charSkin = PREFS.skin || '#e8bd93', charFit = (PREFS.fit === null ? 0 : PREFS.fit);
@@ -5371,9 +5438,10 @@ function beginRun(room, seed) {
 function startRunHost() {
   G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
   G.ff = parseInt($('sel-ff').value,10) || 0;
+  G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
   G.nPlayers = G.players.size;
   const seed = (Math.random()*1e9)|0;
-  NET.send({ t:'start', room:0, seed, diff:G.diff, ff:G.ff, n:G.nPlayers });
+  NET.send({ t:'start', room:0, seed, diff:G.diff, ff:G.ff, up:G.upgOn, n:G.nPlayers });
   beginRun(0, seed);
 }
 /* ambos desplegables salen de DIFFS: una sola lista que mantener */
@@ -5406,6 +5474,7 @@ function prepararSolo() {
 }
 function soloRun() {
   G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
+  G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
   G.ff = 0; G.nPlayers = 1;
   showScreen(null);
   beginRun(0, (Math.random()*1e9)|0);
@@ -5431,6 +5500,37 @@ function abrirSalaPublica(i) {
     SALAS_ABIERTAS[i]);
 }
 /* ------------------------------ entrada ------------------------------ */
+/* En pantalla completa el navegador cede los atajos si se pide el bloqueo
+   de teclado, y entonces CTRL vuelve a ser utilizable sin cerrar nada. */
+let tecladoBloqueado = false;
+function enPantallaCompleta() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function pedirPantallaCompleta() {
+  const el = document.documentElement;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!fn) { addMsg('ESTE NAVEGADOR NO ADMITE PANTALLA COMPLETA', '#ff8a7a'); return; }
+  const pr = fn.call(el);
+  if (pr && pr.then) pr.then(bloquearTeclado).catch(()=>{});
+  else setTimeout(bloquearTeclado, 120);
+}
+function salirPantallaCompleta() {
+  try { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); } catch (e) {}
+  tecladoBloqueado = false;
+  const fn = document.exitFullscreen || document.webkitExitFullscreen;
+  if (fn) try { fn.call(document); } catch (e) {}
+}
+function bloquearTeclado() {
+  if (!navigator.keyboard || !navigator.keyboard.lock) return;
+  const codigos = new Set(['KeyW','KeyA','KeyS','KeyD','KeyC','KeyR','KeyG','KeyH','KeyM','Tab','Space']);
+  for (const k in KEYS) if (KEYS[k] && !KEYS[k].startsWith('Mouse')) codigos.add(KEYS[k]);
+  navigator.keyboard.lock([...codigos]).then(() => { tecladoBloqueado = true; }).catch(()=>{});
+}
+function alternarPantallaCompleta() {
+  if (enPantallaCompleta()) salirPantallaCompleta(); else pedirPantallaCompleta();
+}
+document.addEventListener('fullscreenchange', () => {
+  if (!enPantallaCompleta()) { tecladoBloqueado = false; }
+  else bloquearTeclado();
+});
 function lockPointer() {
   if (G.state !== 'run') return;
   const pr = cv.requestPointerLock && cv.requestPointerLock();
@@ -5516,7 +5616,7 @@ function guardarPersonaje(volver) {
   if (yo) {
     yo.nick = miNick(); yo.skin = charSkin; yo.fit = charFit;
     yo.hair = charHair; yo.hairCol = charHairCol;
-    if (G.isHost) NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
+    if (G.isHost) NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
     else NET.send({ t:'look', id:G.meId, nick:yo.nick, skin:yo.skin, fit:yo.fit, hair:yo.hair, hairCol:yo.hairCol });
   }
   if (volver) showScreen(charReturn);
@@ -5579,15 +5679,18 @@ $('btn-restart').onclick = () => {
   beginRun(0, seed);
 };
 $('btn-keys-reset').onclick = () => { KEYS = Object.assign({}, DEFAULT_KEYS); saveKeys(); renderKeys(); };
+$('btn-fullscreen').onclick = () => { alternarPantallaCompleta(); setTimeout(avisoTeclas, 300); };
 $('btn-start').onclick = () => { if (NET.online) startRunHost(); else soloRun(); };
 $('btn-lobby-char').onclick = () => openChar('scr-lobby');
 $('btn-lobby-back').onclick = () => backToMenu();
 $('btn-end-back').onclick = () => backToMenu();
 $('btn-copy').onclick = () => { try { navigator.clipboard.writeText(NET.code); addMsg('CÓDIGO COPIADO','#8ce89b'); } catch(e){} };
 $('sel-diff').onchange = () => { G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
-  NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff }); renderLobby(); };
+  NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }); renderLobby(); };
+$('sel-upg').onchange = () => { G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
+  NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }); renderLobby(); };
 $('sel-ff').onchange = () => { G.ff = parseInt($('sel-ff').value,10)||0;
-  NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff }); renderLobby(); };
+  NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }); renderLobby(); };
 
 /* =====================================================================
    BUCLE PRINCIPAL (deltaTime)
