@@ -42,7 +42,8 @@
   .kb button.listen{background:#5a1414;color:#fff;border-color:#ff5c5c}
   .cards{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
   .card{width:min(272px,90vw);background:#14110e;border:2px solid #6b5a3c;border-radius:10px;padding:16px;cursor:pointer;transition:.13s}
-  .card:hover{border-color:#ffd45e;transform:translateY(-4px);box-shadow:0 10px 26px rgba(0,0,0,.5)}
+  .card:hover,.card.sel{border-color:#ffd45e;transform:translateY(-4px);box-shadow:0 10px 26px rgba(0,0,0,.5)}
+  .card.sel{background:#221b12}
   .card h3{font-family:Impact,sans-serif;font-size:19px;color:#ffe45c;letter-spacing:1px;margin-bottom:6px}
   .card p{font-size:14px;color:#cfc7b4;line-height:1.35}
   .card .ico{font-size:34px;margin-bottom:6px}
@@ -100,6 +101,10 @@
   .pod.me .plabel{color:#ffd45e}
   .pod.me .glow{background:radial-gradient(ellipse at center,rgba(255,212,94,.55),transparent 70%)}
   .pod .crown{font-size:12px}
+  .pod .ptag{font-size:10px;letter-spacing:1px;color:#9fd0ff;background:rgba(20,30,44,.7);
+             border:1px solid #33506e;border-radius:6px;padding:1px 7px;margin-top:2px}
+  .opt{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  #host-controls select{max-width:172px}
   .pod .kick{font-size:9px;padding:2px 6px;margin-top:2px}
   .empties{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px}
   .empty{width:34px;height:46px;border:2px dashed #4a4234;border-radius:6px;display:flex;
@@ -170,10 +175,10 @@
       <h3>PARTIDA ABIERTA</h3>
       <p>Busca una sala pública y, si no hay, la abre</p>
     </div>
-    <div class="tile off" id="tile-local">
+    <div class="tile" id="tile-local">
       <div class="tico">🎮</div>
       <h3>MISMO DISPOSITIVO</h3>
-      <p class="soon">PRÓXIMAMENTE</p>
+      <p>Hasta 4 en pantalla dividida · J1 teclado, resto con mando</p>
     </div>
   </div>
   <div class="warn" id="mp-msg"></div>
@@ -182,7 +187,7 @@
 <!-- ===================== PERSONAJE ===================== -->
 <div class="screen" id="scr-char">
   <button class="closeX" id="btn-char-x">✕</button>
-  <h2>PERSONALIZACIÓN</h2>
+  <h2 id="char-title">PERSONALIZACIÓN</h2>
   <div class="panel col">
     <div class="row" style="align-items:flex-start;gap:22px">
       <div class="col" style="flex:1.15;min-width:300px">
@@ -256,12 +261,11 @@
     <div class="empties" id="empty-list"></div>
     <div class="plist" id="lobby-list"></div>
     <div class="lbar" id="host-controls">
-      <span class="muted">DIFICULTAD</span>
-      <select id="sel-diff"></select>
-      <span class="muted">MEJORAS</span>
-      <select id="sel-upg"><option value="1">Activadas</option><option value="0">Desactivadas</option></select>
-      <span class="muted" id="ff-label">FUEGO AMIGO</span>
-      <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select>
+      <span class="opt"><span class="muted">DIFICULTAD</span><select id="sel-diff"></select></span>
+      <span class="opt"><span class="muted">MEJORAS</span>
+        <select id="sel-upg"><option value="1">Activadas</option><option value="0">Desactivadas</option></select></span>
+      <span class="opt" id="ff-label"><span class="muted">FUEGO AMIGO</span>
+        <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select></span>
     </div>
     <div class="lbar">
       <button id="btn-lobby-char">PERSONALIZAR</button>
@@ -275,7 +279,8 @@
 <div class="screen" id="scr-keys">
   <h2>OPCIONES DE CONTROL</h2>
   <div class="panel col">
-    <div class="muted">Pulsa un botón y luego la tecla nueva. También admite botones del ratón.</div>
+    <div class="row" id="key-tabs" style="gap:6px"></div>
+    <div class="muted" id="key-help">Pulsa un botón y luego la tecla nueva. También admite botones del ratón.</div>
     <div class="keys" id="key-list"></div>
     <div class="warn" id="keys-warn"></div>
     <div class="row">
@@ -294,7 +299,7 @@
 <!-- ===================== MEJORAS ROGUELITE ===================== -->
 <div class="screen" id="scr-upg">
   <h2 id="upg-title">ELIGE UNA MEJORA</h2>
-  <div class="muted">Se acumulan durante la run · se pierden al morir</div>
+  <div class="muted" id="upg-sub">Se acumulan durante la run · se pierden al morir</div>
   <div class="cards" id="upg-cards"></div>
 </div>
 
@@ -496,7 +501,7 @@ const DEFAULT_KEYS = {
 };
 const KEY_LABELS = {
   forward:'Avanzar', back:'Retroceder', left:'Desplazarse a la izquierda', right:'Desplazarse a la derecha',
-  sprint:'Sprint (gasta estamina)', crouch:'Agacharse (hitbox reducida)', jump:'Saltar',
+  sprint:'Sprint (no gasta estamina)', crouch:'Agacharse (hitbox reducida)', jump:'Saltar',
   dash:'Dash / esquivar (i-frames)', fire:'Disparar', alt:'Fuego alternativo', reload:'Recargar',
   heal:'Cantimplora (curar)', nade:'Lanzar granada (sin cambiar de arma)',
   w1:'1 · Machete', w2:'2 · Glock 19', w3:'3 · Remington 870', w4:'4 · M16', w5:'5 · Frag Grenade',
@@ -508,6 +513,23 @@ const KEY_SECTIONS = [
   { title:'ARMAS',      keys:['w1','w2','w3','w4','w5'] },
   { title:'INTERFAZ',   keys:['map','mute'] }
 ];
+/* ---------------------------------------------------------------------
+   Mandos: Chrome mapea PlayStation y Xbox al esquema "standard", asi que
+   los indices de boton valen para los dos. Cada jugador local tiene su
+   propio juego de asignaciones: el J1 va con teclado y J2-J4 con mando.
+   --------------------------------------------------------------------- */
+const PAD_BOTONES = {
+  0:'A / ✕', 1:'B / ○', 2:'X / □', 3:'Y / △', 4:'LB / L1', 5:'RB / R1',
+  6:'LT / L2', 7:'RT / R2', 8:'BACK', 9:'START', 10:'L3', 11:'R3',
+  12:'CRUZ ↑', 13:'CRUZ ↓', 14:'CRUZ ←', 15:'CRUZ →', 16:'HOME'
+};
+const DEFAULT_PAD = {
+  fire:'B7', alt:'B6', nade:'B5', reload:'B2', heal:'B3',
+  jump:'B0', dash:'B1', crouch:'B10', sprint:'B11',
+  w1:'B14', w2:'B12', w3:'B15', w4:'B13', w5:'B4',
+  map:'B8', mute:'B16'
+};
+const MAX_LOCALES = 4;
 let KEYS = Object.assign({}, DEFAULT_KEYS);
 try {
   const saved = JSON.parse(localStorage.getItem('torremar.keys') || 'null');
@@ -589,7 +611,13 @@ function newUpgradeState() {
 /* ------------------------------ lienzo ------------------------------- */
 const cv = $('game');
 const ctx = cv.getContext('2d', { alpha:false });
-const view = { w:0, h:0, s:1, dpr:1, hud:0, v3:0 };
+/* screen = el lienzo entero; view = el recuadro que se esta pintando ahora.
+   En pantalla dividida se llama a setView por cada jugador y todo el render
+   sigue leyendo view sin enterarse de nada. */
+const screen = { w:0, h:0, dpr:1 };
+const view = { x:0, y:0, w:0, h:0, s:1, dpr:1, hud:0, v3:0, partido:false };
+let CAM = null;                                         /* jugador desde cuyos ojos se pinta */
+const cam = () => CAM || G.players.get(G.meId);
 let COL_W = 2, COLS = 0, zbuf = new Float32Array(1);
 let litL = new Float32Array(1), litY0 = new Float32Array(1), litY1 = new Float32Array(1);
 let litW = new Float32Array(1);
@@ -602,12 +630,23 @@ function resize() {
   cv.height = Math.max(240, Math.floor(window.innerHeight * dpr));
   cv.style.width = window.innerWidth + 'px';
   cv.style.height = window.innerHeight + 'px';
-  view.w = cv.width; view.h = cv.height; view.dpr = dpr;
-  view.s = clamp(view.h / 800, 0.7, 2.4);
+  screen.w = cv.width; screen.h = cv.height; screen.dpr = dpr;
+  view.dpr = dpr;
+  setView(0, 0, cv.width, cv.height);
+  fbuf.cnv = null; vignette = null; hudTex = null;
+}
+/* cambia el recuadro activo; los buffers solo se rehacen si cambia el tamano */
+function setView(x, y, w, h) {
+  view.x = x; view.y = y;
+  const nuevo = (w !== view.w || h !== view.h);
+  view.w = w; view.h = h;
+  view.partido = (screen.h > 0 && h < screen.h - 2);   /* recuadro de pantalla dividida */
+  view.s = clamp(h / 800, view.partido ? 0.40 : 0.55, 2.4);
   view.hud = 92 * view.s;
-  view.v3 = view.h - view.hud;
-  COL_W = clamp(Math.round(view.w / 540), 2, 5);
-  COLS = Math.ceil(view.w / COL_W);
+  view.v3 = h - view.hud;
+  if (!nuevo) return;
+  COL_W = clamp(Math.round(w / 540), 2, 5);
+  COLS = Math.ceil(w / COL_W);
   zbuf = new Float32Array(COLS);
   litL = new Float32Array(COLS); litY0 = new Float32Array(COLS); litY1 = new Float32Array(COLS);
   litW = new Float32Array(COLS);
@@ -624,7 +663,7 @@ const Snd = {
   /* coloca el siguiente sonido en el espacio: volumen por distancia y
      panoramica segun quede a izquierda o derecha del jugador */
   at(x,y){
-    const p = (typeof me === 'function') ? me() : null;
+    const p = (typeof localCerca === 'function') ? localCerca(x,y) : null;
     if (!p) { this._sp = null; return this; }
     const dx = x-p.x, dy = y-p.y, d = Math.hypot(dx,dy);
     const rx = -IN.dirY, ry = IN.dirX;
@@ -2357,13 +2396,24 @@ const G = {
   players:new Map(),            // id -> jugador (incluido el local)
   meId:'', hostId:'', isHost:false,
   enemies:[], projectiles:[], items:[], pools:[], parts:[], fx:[], motes:[], props:[],
-  diff:2, ff:0, upgOn:1, nPlayers:1,
+  diff:2, ff:0, upgOn:1, local:0, nPlayers:1,
   msgs:[], time:0, kills:0, startedAt:0,
   bossRef:null, cineT:0, flowT:0, netT:0, seq:0, over:false, win:false, hitStop:0,
   dmgNums:[], feed:[], combo:0, comboT:0, decals:[], holes:[], flick:0, flickT:2, mod:null,
   frames:0, heads:0
 };
 const me = () => G.players.get(G.meId);
+/* en pantalla dividida los avisos y el sonido se miden desde el local mas
+   cercano al suceso, que es el que lo esta viviendo */
+function localCerca(x, y) {
+  let mejor = null, md = Infinity;
+  for (const p of G.players.values()) {
+    if (!p.isLocal) continue;
+    const d = dist2(x, y, p.x, p.y);
+    if (d < md) { md = d; mejor = p; }
+  }
+  return mejor || G.players.get(G.meId) || null;
+}
 function addMsg(text, col) {
   G.msgs.push({ text, t:3.2, col: col||'#ffd45e' });
   if (G.msgs.length > 5) G.msgs.shift();
@@ -2393,6 +2443,7 @@ function roomEnemyCount() {
 function makePlayer(id, nick, skin, order, fit, hair, hairCol) {
   return {
     id, nick, skin, order, fit: fit|0,
+    slot: 0, pad: null,                                 /* ranura de mandos: 0 = teclado */
     hair: (hair === undefined || hair === null) ? 0 : (hair|0),
     hairCol: hairCol || '#2a1f18',
     x:MAP.spawn?MAP.spawn.x:5, y:MAP.spawn?MAP.spawn.y:5, ang:-Math.PI/2,
@@ -2660,7 +2711,8 @@ class Enemy {
     }
     const hostSide = G.isHost || !NET.online;
     const drops = this.def.drop || 0;
-    const bonus = (me() && me().up ? me().up.drops : 0);
+    const rematador = G.players.get(this.lastHitBy) || me();
+    const bonus = (rematador && rematador.up ? rematador.up.drops : 0);
     if (hostSide && Math.random() < drops*(1+bonus)*(this.elite?1.6:1))
       dropItem(this.x, this.y, this.boss||this.mini||this.elite);
     if (hostSide && this.elite && Math.random() < 0.5) dropItem(this.x+0.4, this.y, true);
@@ -2673,8 +2725,8 @@ class Enemy {
       if (hostSide) { dropItem(this.x+0.6, this.y, true); dropItem(this.x-0.6, this.y, true); }
       addMsg('💀 ' + this.def.name + ' HA CAÍDO', '#ff8a5c');
     }
-    const p = me();
-    if (p && p.up && p.up.lifesteal && !p.down && (!NET.online || this.lastHitBy === G.meId))
+    const p = (rematador && rematador.isLocal) ? rematador : (NET.online ? null : me());
+    if (p && p.up && p.up.lifesteal && !p.down)
       p.hp = Math.min(p.maxhp, p.hp + p.up.lifesteal);   /* solo cura a quien remata */
   }
   grito() {                                           /* frase de combate, sin agobiar */
@@ -2682,7 +2734,7 @@ class Enemy {
     if (!def.grito) return;
     if (G.time - (this.gritoT || -99) < 6.5) return;
     this.gritoT = G.time;
-    const p = me();
+    const p = localCerca(this.x, this.y);
     if (p && dist2(this.x, this.y, p.x, p.y) > 26*26) return;
     if (def.grito === 'sicariato') {
       addMsg('🔫 ' + def.name + ': «¡SICARIATO, SICARIATO!»', '#ff8a5c');
@@ -2945,10 +2997,70 @@ function dropItem(x, y, rich) {
    JUGADOR LOCAL: movimiento, estamina, dash, armas y cantimplora
    ===================================================================== */
 const IN = { keys:Object.create(null), mouse:Object.create(null), dirX:1, dirY:0, planeX:0, planeY:0.66 };
+/* asignaciones por ranura: la 0 es el teclado y las demas, mandos */
+const BINDS = [KEYS, Object.assign({}, DEFAULT_PAD), Object.assign({}, DEFAULT_PAD),
+               Object.assign({}, DEFAULT_PAD)];
+try {
+  const g = JSON.parse(localStorage.getItem('torremar.pads') || 'null');
+  if (g) for (let i=1;i<4;i++) if (g[i]) Object.assign(BINDS[i], g[i]);
+} catch (e) {}
+function savePads() {
+  try { localStorage.setItem('torremar.pads', JSON.stringify([null, BINDS[1], BINDS[2], BINDS[3]])); }
+  catch (e) {}
+}
+/* estado de los mandos, refrescado una vez por frame */
+const PADS = [];
+function pollPads() {
+  const gs = (navigator.getGamepads && navigator.getGamepads()) || [];
+  PADS.length = 0;
+  for (let i = 0; i < gs.length; i++) {
+    const g = gs[i];
+    if (!g || !g.connected) { PADS.push(null); continue; }
+    PADS.push({ index:i, id:g.id, b:g.buttons.map(x => x.pressed || x.value > 0.45), ax:g.axes });
+  }
+}
+function padPulsado(padIdx, code) {
+  const g = PADS[padIdx];
+  if (!g || !code) return false;
+  if (code[0] === 'B') return !!g.b[+code.slice(1)];
+  if (code[0] === 'A') {                                /* eje usado como boton */
+    const n = +code.slice(1, -1), signo = code.slice(-1) === '+' ? 1 : -1;
+    const v = g.ax[n] || 0;
+    return signo > 0 ? v > 0.55 : v < -0.55;
+  }
+  return false;
+}
+/* jugador cuyo mando se esta leyendo ahora mismo */
+let CTRL = null;
 function down(bind) {
+  const p = CTRL;
+  if (p && p.pad !== undefined && p.pad !== null) return padPulsado(p.pad, BINDS[p.slot||0][bind]);
   const code = KEYS[bind];
   if (!code) return false;
   return code.startsWith('Mouse') ? !!IN.mouse[code.slice(5)] : !!IN.keys[code];
+}
+/* true solo en el fotograma en que se pulsa: para cosas de un toque */
+function flanco(p, bind) {
+  const v = down(bind);
+  if (!p.edge) p.edge = Object.create(null);
+  const antes = !!p.edge[bind];
+  p.edge[bind] = v;
+  return v && !antes;
+}
+/* lee una accion como si el mando de ese jugador estuviera al mando */
+function downDe(p, bind) {
+  const antes = CTRL; CTRL = p;
+  const v = down(bind);
+  CTRL = antes;
+  return v;
+}
+/* movimiento analogico del mando, si lo hay */
+function ejeMando(p, cual) {
+  if (!p || p.pad === undefined || p.pad === null) return 0;
+  const g = PADS[p.pad];
+  if (!g) return 0;
+  const v = g.ax[cual] || 0;
+  return Math.abs(v) < 0.18 ? 0 : v;                    /* zona muerta */
 }
 function initLocal(p) {
   p.isLocal = true;
@@ -3091,7 +3203,7 @@ function fire(p, alt) {
   else if (w.ammo) p.ammo[w.ammo] -= w.cost;
   if (w.casing) ejectCasing(p, w.casing);
 
-  alertNoise(w.noise);
+  alertNoise(w.noise, p);
   if (w.cross === 'rifle') {
     p.recoil = Math.min(1, p.recoil + 0.20);
     p.pitch = clamp(p.pitch + 5*view.s*(0.6+p.recoil), -view.v3*0.30, view.v3*0.30);  /* el cañon sube */
@@ -3149,13 +3261,13 @@ function quickNade(p) {
     vx:IN.dirX*vel, vy:IN.dirY*vel, vz:3.1, z:0.75, grav:1, dmg:0, r:0.16, spr:'nade',
     from:'player', owner:p.id, life:9, fuse:mecha, bounces:6, scale:0.30 });
   Snd.pin(); Snd.throwN();
-  alertNoise(w.noise);
+  alertNoise(w.noise, p);
   NET.send({ t:'nade', x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
 }
-function alertNoise(radius) {
+function alertNoise(radius, quien) {
+  const p = quien || me(); if (!p) return;
   for (const e of G.enemies) {
     if (!e.alive) continue;
-    const p = me(); if (!p) return;
     if (dist2(e.x,e.y,p.x,p.y) > radius*radius) continue;
     e.losT = 0;
   }
@@ -3257,7 +3369,8 @@ function explode(x, y, radius, dmg, fromId) {
   spawnParts('spark', x, y, 0.5, 30, 5, 4.5, 0.85);
   spawnParts('smoke', x, y, 0.6, 14, 2.2, 1.6, 1.6);
   Snd.boom();
-  const p = me(); if (p) p.flash = Math.max(p.flash, 0.16);
+  for (const q of G.players.values())                    /* fogonazo para cada pantalla */
+    if (q.isLocal && dist2(x, y, q.x, q.y) < 900) q.flash = Math.max(q.flash||0, 0.16);
   for (const e of G.enemies) {
     if (!e.alive) continue;
     const d = dist(x,y,e.x,e.y);
@@ -3296,7 +3409,8 @@ function updateProjectiles(dt) {
     if (p.fuse !== undefined) {
       p.fuse -= dt;
       if (p.fuse <= 0) {
-        const u = me() ? me().up : { nadeRadius:0 };
+        const dueno = G.players.get(p.owner);
+        const u = (dueno && dueno.up) ? dueno.up : (me() && me().up ? me().up : { nadeRadius:0 });
         explode(p.x, p.y, 4.6*(1+u.nadeRadius), 260, p.owner);
         G.projectiles.splice(i,1); continue;
       }
@@ -3323,13 +3437,15 @@ function updateProjectiles(dt) {
       }
       p.x = nx; p.y = ny;
       if (p.from === 'enemy') {
-        const lp = me();
-        const bodyZ = 0.55 + (lp ? (lp.z||0) : 0);
-        const zTol = (lp && lp.crouching) ? 0.30 : 0.48;
-        if (lp && !lp.down && dist2(p.x,p.y,lp.x,lp.y) < 0.14 && Math.abs((p.z||0.5) - bodyZ) < zTol) {
-          damagePlayer(lp, p.dmg, p.x, p.y);
-          if (p.poison) spawnPool(p.x,p.y,p.dmg);
-          spawnFX('spark', p.x, p.y, 0.35, 0.2); dead = true; break;
+        for (const lp of G.players.values()) {           /* alcanza a cualquier local */
+          if (!lp.isLocal || lp.down) continue;
+          const bodyZ = 0.55 + (lp.z||0);
+          const zTol = lp.crouching ? 0.30 : 0.48;
+          if (dist2(p.x,p.y,lp.x,lp.y) < 0.14 && Math.abs((p.z||0.5) - bodyZ) < zTol) {
+            damagePlayer(lp, p.dmg, p.x, p.y);
+            if (p.poison) spawnPool(p.x,p.y,p.dmg);
+            spawnFX('spark', p.x, p.y, 0.35, 0.2); dead = true; break;
+          }
         }
       }
     }
@@ -3339,10 +3455,13 @@ function updateProjectiles(dt) {
   for (let i=G.pools.length-1;i>=0;i--) {
     const q = G.pools[i]; q.life -= dt;
     if (q.life <= 0) { G.pools.splice(i,1); continue; }
-    const lp = me();
-    if (lp && !lp.down && dist(q.x,q.y,lp.x,lp.y) < q.r) {
-      q.tick = (q.tick||0) - dt;
-      if (q.tick <= 0) { q.tick = 0.5; damagePlayer(lp, q.dmg*0.5*(1-lp.up.poisonRes), q.x, q.y); }
+    q.tick = (q.tick||0) - dt;
+    const pica = q.tick <= 0;
+    if (pica) q.tick = 0.5;
+    for (const lp of G.players.values()) {
+      if (!lp.isLocal || lp.down || !lp.up) continue;
+      if (pica && dist(q.x,q.y,lp.x,lp.y) < q.r)
+        damagePlayer(lp, q.dmg*0.5*(1-lp.up.poisonRes), q.x, q.y);
     }
     if (Math.random() < dt*6) spawnParts('venom', q.x+rnd(-q.r*0.6,q.r*0.6), q.y+rnd(-q.r*0.6,q.r*0.6), 0.06, 1, 0.2, 0.6, 0.8);
   }
@@ -3357,6 +3476,19 @@ function spawnPool(x, y, dmg) {
    ===================================================================== */
 function updateLocal(p, dt) {
   if (!p) return;
+  CTRL = p;                                             /* down() lee el mando de este */
+  if (p.pad !== undefined && p.pad !== null) {          /* mirar con el stick derecho */
+    const lx = ejeMando(p, 2), ly = ejeMando(p, 3);
+    if (lx) { p.ang += lx * 2.6 * dt; if (p.ang > Math.PI) p.ang -= TAU; else if (p.ang < -Math.PI) p.ang += TAU; }
+    if (ly) p.pitch = clamp(p.pitch - ly * 520 * dt * view.s, -view.v3*0.30, view.v3*0.30);
+  }
+  updateDir(p);                                         /* IN.* pasa a ser el de este */
+  if (p.pad !== undefined && p.pad !== null) {          /* atajos que en teclado van por keydown */
+    for (let i=0;i<5;i++) if (flanco(p, 'w'+(i+1))) selectWeapon(p, i);
+    if (flanco(p, 'mute')) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
+    if (padPulsado(p.pad, 'B9') && !p.startHeld) openPause();   /* START */
+    p.startHeld = padPulsado(p.pad, 'B9');
+  }
   /* cambio de arma */
   if (p.switching > 0) {
     p.switching += dt * 4.5 * (1 + p.up.swap);
@@ -3408,8 +3540,12 @@ function updateLocal(p, dt) {
   }
 
   /* ---------- movimiento ---------- */
-  const fw = (down('forward')?1:0) - (down('back')?1:0);
-  const st = (down('right')?1:0) - (down('left')?1:0);
+  let fw = (down('forward')?1:0) - (down('back')?1:0);
+  let st = (down('right')?1:0) - (down('left')?1:0);
+  if (p.pad !== undefined && p.pad !== null) {          /* stick izquierdo, analogico */
+    const ax = ejeMando(p, 0), ay = ejeMando(p, 1);
+    if (ax || ay) { st = ax; fw = -ay; }
+  }
   const plen = Math.hypot(IN.planeX, IN.planeY) || 1;
   const rx = IN.planeX/plen, ry = IN.planeY/plen;
   let mx = IN.dirX*fw + rx*st, my = IN.dirY*fw + ry*st;
@@ -4045,12 +4181,12 @@ function endRunLocal(win) {
    RENDER
    ===================================================================== */
 let lightK = 1, fogMul = 1, vignette = null, painVig = null, grainTex = null, hudTex = null;
-function camHeight() { const p = me(); return 0.5 + (p ? (p.z||0) : 0); }
+function camHeight() { const p = cam(); return 0.5 + (p ? (p.z||0) : 0); }
 function renderFloorCeiling(horizon) {
   const W = view.w, H = view.v3;
   if (!fbuf.cnv) buildFloorBuffer();
   const bw = fbuf.w, bh = fbuf.h, data = fbuf.data, scaleY = H/bh;
-  const p = me(); if (!p) return;
+  const p = cam(); if (!p) return;
   const camZ = camHeight();
   const rdx0 = IN.dirX-IN.planeX, rdy0 = IN.dirY-IN.planeY;
   const rdx1 = IN.dirX+IN.planeX, rdy1 = IN.dirY+IN.planeY;
@@ -4093,7 +4229,7 @@ function renderFloorCeiling(horizon) {
 }
 function renderWorld() {
   const W = view.w, H = view.v3;
-  const p = me(); if (!p) return;
+  const p = cam(); if (!p) return;
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   lightK = p.flash > 0 ? clamp(1-p.flash*5, 0.35, 1) : 1;
   if (G.flick > 0) lightK *= 1.35;                     /* bajon de luz momentaneo */
@@ -4271,7 +4407,7 @@ function collectSprites() {
     addLight(MAP.exit.x, MAP.exit.y, 6.2, 0.34 + 0.10*Math.sin(G.time*3), 0.05, 0);
   if (G.portalOn) list.push({ x:MAP.exit.x, y:MAP.exit.y, tex:FX.portal(), sx:1.1, sy:1.5,
                               anchor:'floor', lift:0, flash:0, alpha:0.85, raw:true, tag:'SALIDA' });
-  const vista = me();
+  const vista = cam();
   if (MAP.lamps && vista) for (const lp of MAP.lamps) {  /* lamparas colgadas del techo */
     if (dist2(lp.x, lp.y, vista.x, vista.y) > 380) continue;
     if (!MAP.lampsOn && (lp.x*7 + lp.y*13 | 0) % 3) continue;
@@ -4302,7 +4438,7 @@ function collectSprites() {
   return list;
 }
 function renderSprites() {
-  const W = view.w, H = view.v3, p = me();
+  const W = view.w, H = view.v3, p = cam();
   if (!p) return;
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   const list = collectSprites();
@@ -4384,7 +4520,7 @@ function renderSprites() {
   }
 }
 function renderNadeArc() {                              /* vista previa del lanzamiento */
-  const p = me();
+  const p = cam();
   if (!p || p.weapon !== 4 || p.down || p.ammo.nades <= 0) return;
   const W = view.w, H = view.v3;
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
@@ -4429,7 +4565,7 @@ function renderNadeArc() {                              /* vista previa del lanz
       const tx = invDet*(IN.dirY*rx - IN.dirX*ry);
       const sx = (W/2)*(1+tx/ty), unit = H/ty;
       const sy = horizon + unit*camZ;
-      const u = me().up;
+      const u = cam().up;
       const rr = unit*4.6*(1+(u?u.nadeRadius:0))*0.5;
       ctx.globalAlpha = 0.35;
       ctx.strokeStyle = '#8ce89b'; ctx.lineWidth = Math.max(2, 2.5*view.s);
@@ -4441,7 +4577,7 @@ function renderNadeArc() {                              /* vista previa del lanz
 }
 function renderDecals() {
   if (!G.decals.length) return;
-  const W = view.w, H = view.v3, p = me(); if (!p) return;
+  const W = view.w, H = view.v3, p = cam(); if (!p) return;
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   const invDet = 1/(IN.planeX*IN.dirY - IN.dirX*IN.planeY);
   ctx.save();
@@ -4471,7 +4607,7 @@ function renderDecals() {
 }
 function renderExitCircle() {
   if (!G.portalOn || !MAP.exit) return;
-  const W = view.w, H = view.v3, p = me(); if (!p) return;
+  const W = view.w, H = view.v3, p = cam(); if (!p) return;
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   const invDet = 1/(IN.planeX*IN.dirY - IN.dirX*IN.planeY);
   const proj = (wx, wy) => {
@@ -4516,7 +4652,7 @@ function renderExitCircle() {
   ctx.restore();
 }
 function renderMotes() {
-  const W = view.w, H = view.v3, p = me();
+  const W = view.w, H = view.v3, p = cam();
   if (!p) return;
   const horizon = H*0.5 + p.pitch;
   const invDet = 1/(IN.planeX*IN.dirY - IN.dirX*IN.planeY);
@@ -4541,7 +4677,7 @@ function renderMotes() {
 
 /* ------------------- armas en primera persona (abajo dcha) ----------- */
 function renderWeapon() {
-  const p = me(); if (!p || p.down) return;
+  const p = cam(); if (!p || p.down) return;
   const W = view.w, H = view.v3, s = view.s*1.52;
   const bobX = Math.sin(p.bobT*0.5)*11*s*Math.abs(p.bob);
   const bobY = Math.abs(Math.cos(p.bobT*0.5))*9*s*Math.abs(p.bob);
@@ -4883,7 +5019,7 @@ function renderMinimap() {
   ctx.strokeRect(x0, y0, w, h);
   ctx.restore();
   /* mejoras conseguidas en la run */
-  const p = me();
+  const p = cam();
   if (p && p.up && p.up.taken.length) {
     ctx.textAlign = 'right';
     let uy = y0 + h + 22*s;
@@ -4899,7 +5035,7 @@ function renderMinimap() {
   }
 }
 function renderHUD() {
-  const W = view.w, H = view.h, s = view.s, p = me();
+  const W = view.w, H = view.h, s = view.s, p = cam();
   if (!p) return;
   const barH = view.hud, top = H - barH;
   if (!hudTex || hudTex.w !== W) buildHudTex(W, barH);
@@ -4965,11 +5101,13 @@ function renderHUD() {
   }
   /* ---------------- HUD de equipo (esquina) ---------------- */
   const team = [...G.players.values()].sort((a,b)=>a.order-b.order);
-  const many = team.length > 4;
+  const many = team.length > 4 || view.partido;
   const rowH = many ? 17*s : 22*s, rowW = many ? 168*s : 190*s, fs2 = many ? 12*s : 14*s;
   let ty = 16*s;
   ctx.textAlign = 'left';
-  bigText('EQUIPO ' + team.length + '/' + MAX_PLAYERS, 16*s, ty, (16*s)|0, '#c9b48a', 'left');
+  const tope = NET.online ? MAX_PLAYERS : (G.local ? MAX_LOCALES : team.length);
+  bigText((view.partido ? 'J' + ((p.slot|0)+1) + ' · ' + (p.nick||'') + '  ' : 'EQUIPO ') +
+          team.length + '/' + tope, 16*s, ty, (16*s)|0, '#c9b48a', 'left');
   ty += 8*s;
   for (const pl of team) {
     ty += rowH;
@@ -5014,7 +5152,9 @@ function renderHUD() {
             bx+bw2-6*s, by+bh*0.72, (12*s)|0, '#ffd9d0', 'right');
   }
   drawCrosshair(p);
-  if (down('map')) renderMinimap();
+  if (p.pad !== null && p.pad !== undefined && !PADS[p.pad])
+    bigText('🎮 MANDO ' + (p.pad+1) + ' DESCONECTADO', W/2, view.v3*0.62, (18*s)|0, '#ff8a7a');
+  if (downDe(p, 'map')) renderMinimap();
   /* ---------------- avisos ---------------- */
   ctx.textAlign='center';
   if (G.modBanner > 0 && G.mod && G.mod.id !== 'none') {
@@ -5103,7 +5243,7 @@ function showScreen(id) {
   if (id === 'scr-main') renderHomePreview();          /* el mosaico muestra tu personaje */
 }
 function renderLobby() {
-  const online = NET.online;
+  const online = NET.online, local = !!G.local && !online;
   const jug = [...G.players.values()].sort((a,b)=>a.order-b.order);
   const yo = G.meId;
   /* El local va en el centro y el resto se reparte a los lados, de dentro
@@ -5145,15 +5285,27 @@ function renderLobby() {
       b.onclick = () => NET.kick(p.id);
       pod.appendChild(b);
     }
+    if (local) {                                        /* cada uno edita el suyo */
+      const s2 = document.createElement('div');
+      s2.className = 'ptag';
+      s2.textContent = (p.pad === null || p.pad === undefined) ? '⌨ TECLADO' : '🎮 MANDO ' + (p.pad+1);
+      pod.appendChild(s2);
+      const b = document.createElement('button');
+      b.className = 'kick'; b.textContent = 'PERSONAJE';
+      b.onclick = () => openChar('scr-lobby', p);
+      pod.appendChild(b);
+    }
     stage.appendChild(pod);
   }
   /* huecos libres, discretos y debajo del escenario */
   const vac = $('empty-list');
   vac.innerHTML = '';
-  if (online) {
-    for (let i = jug.length; i < MAX_PLAYERS; i++) {
+  if (online || local) {
+    const tope = online ? MAX_PLAYERS : MAX_LOCALES;
+    for (let i = jug.length; i < tope; i++) {
       const e = document.createElement('div');
       e.className = 'empty'; e.textContent = 'P' + (i+1);
+      if (local) e.title = 'Pulsa un botón en un mando libre';
       vac.appendChild(e);
     }
   }
@@ -5161,23 +5313,29 @@ function renderLobby() {
   const mando = G.isHost;
   $('host-controls').style.display = mando ? 'flex' : 'none';
   $('ff-label').style.display = online ? '' : 'none';
-  $('sel-ff').style.display = online ? '' : 'none';
+  $('sel-ff').style.display = (online || local) ? '' : 'none';
+  $('ff-label').style.display = (online || local) ? '' : 'none';
   $('code-row').style.display = online ? 'flex' : 'none';
-  $('empty-list').style.display = online ? 'flex' : 'none';
+  $('empty-list').style.display = (online || local) ? 'flex' : 'none';
   $('btn-start').style.display = mando ? '' : 'none';
+  $('btn-lobby-char').style.display = local ? 'none' : '';
   $('sel-upg').value = String(G.upgOn ? 1 : 0);
   const sinMej = G.upgOn ? '' : ' · SIN MEJORAS: no habrá botín en las salas 5, 15, 25, 35 ni 45';
-  $('lobby-hint').textContent = !online
+  $('lobby-hint').textContent = local
+    ? 'Pulsa cualquier botón de un mando para entrar (hasta 4). El J1 va con teclado.' + sinMej
+    : !online
     ? 'Partida en solitario. Elige dificultad y dale a START.' + sinMej
     : (mando ? 'Hasta 8 jugadores. Cuantos más entren, más enemigos habrá y más fuertes serán (los jefes, aún más).'
              : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':'')) + sinMej;
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
   $('lobby-title').textContent = online
     ? 'SALA DE ESPERA · ' + G.players.size + '/' + MAX_PLAYERS
-    : 'PARTIDA EN SOLITARIO';
+    : (local ? 'MISMO DISPOSITIVO · ' + G.players.size + '/' + MAX_LOCALES
+             : 'PARTIDA EN SOLITARIO');
 }
 function avisoTeclas() {
   const malas = [];
+  if (typeof keySlot === 'number' && keySlot > 0) { const e0 = $('keys-warn'); if (e0) e0.textContent = ''; return; }
   for (const k in KEYS) if (TECLAS_RIESGO.includes(KEYS[k])) malas.push(KEY_LABELS[k] || k);
   const el = $('keys-warn');
   if (!el) return;
@@ -5185,35 +5343,88 @@ function avisoTeclas() {
     ? '⚠ ' + malas.join(', ') + ' usa una tecla que el navegador intercepta. Pon PANTALLA COMPLETA o cámbiala.'
     : '';
 }
+let keySlot = 0;                                        /* pestana activa: 0=J1 teclado */
+function nombreBind(slot, code) {
+  if (slot === 0) return keyName(code);
+  if (!code) return '—';
+  if (code[0] === 'B') return PAD_BOTONES[+code.slice(1)] || ('BOTÓN ' + code.slice(1));
+  if (code[0] === 'A') return 'EJE ' + code.slice(1, -1) + code.slice(-1);
+  return code;
+}
+function renderKeyTabs() {
+  const tabs = $('key-tabs');
+  tabs.innerHTML = '';
+  for (let i = 0; i < MAX_LOCALES; i++) {
+    const b = document.createElement('button');
+    b.textContent = 'J' + (i+1) + (i === 0 ? ' · TECLADO' : ' · MANDO');
+    b.style.cssText = 'font-size:13px;padding:6px 12px' +
+      (i === keySlot ? ';border-color:#ffd45e;background:#3a2e22' : '');
+    b.onclick = () => { keySlot = i; renderKeys(); };
+    tabs.appendChild(b);
+  }
+}
 function renderKeys() {
+  renderKeyTabs();
+  const mando = keySlot > 0;
+  const mapa = BINDS[keySlot];
+  $('key-help').textContent = mando
+    ? 'Mandos del J' + (keySlot+1) + ': pulsa una acción de la lista y luego el botón del mando. ' +
+      'Vale cualquier mando de PlayStation o Xbox; el nombre sale como Xbox / PlayStation.'
+    : 'Pulsa un botón y luego la tecla nueva. También admite botones del ratón.';
   const box = $('key-list');
   box.innerHTML = '';
   box.style.display = 'block';
   for (const sec of KEY_SECTIONS) {
+    const claves = mando ? sec.keys.filter(k => !['forward','back','left','right'].includes(k)) : sec.keys;
+    if (!claves.length) continue;
     const h = document.createElement('div');
     h.style.cssText = 'grid-column:1/-1;margin:10px 0 4px;font-family:Impact,sans-serif;letter-spacing:2px;color:#ffb347';
     h.textContent = sec.title;
     box.appendChild(h);
     const grid = document.createElement('div');
     grid.className = 'keys';
-    for (const k of sec.keys) {
+    for (const k of claves) {
       const row = document.createElement('div');
       row.className = 'kb';
       const label = document.createElement('b'); label.textContent = KEY_LABELS[k];
-      const btn = document.createElement('button'); btn.textContent = keyName(KEYS[k]);
+      const btn = document.createElement('button'); btn.textContent = nombreBind(keySlot, mapa[k]);
       btn.onclick = () => {
-        btn.classList.add('listen'); btn.textContent = 'PULSA…';
-        const onKey = (ev) => { ev.preventDefault(); ev.stopPropagation(); finish(ev.code); };
-        const onMouse = (ev) => { ev.preventDefault(); ev.stopPropagation(); finish('Mouse' + ev.button); };
+        btn.classList.add('listen'); btn.textContent = mando ? 'PULSA EN EL MANDO…' : 'PULSA…';
+        let vivo = true;
         const finish = (code) => {
-          for (const other in KEYS) if (other !== k && KEYS[other] === code) KEYS[other] = '';  /* sin duplicados */
-          KEYS[k] = code; saveKeys();
+          if (!vivo) return;
+          vivo = false;
+          for (const otro in mapa) if (otro !== k && mapa[otro] === code) mapa[otro] = '';
+          mapa[k] = code;
+          if (mando) savePads(); else saveKeys();
           window.removeEventListener('keydown', onKey, true);
           window.removeEventListener('mousedown', onMouse, true);
           renderKeys();
         };
+        const onKey = (ev) => {
+          ev.preventDefault(); ev.stopPropagation();
+          if (mando) { if (ev.code === 'Escape') finish(mapa[k]); return; }
+          finish(ev.code);
+        };
+        const onMouse = (ev) => {
+          if (mando) return;
+          ev.preventDefault(); ev.stopPropagation(); finish('Mouse' + ev.button);
+        };
         window.addEventListener('keydown', onKey, true);
         window.addEventListener('mousedown', onMouse, true);
+        if (mando) {                                    /* espera a que se pulse en el mando */
+          const escucha = () => {
+            if (!vivo) return;
+            pollPads();
+            for (let gi = 0; gi < PADS.length; gi++) {
+              const g = PADS[gi];
+              if (!g) continue;
+              for (let bi = 0; bi < g.b.length; bi++) if (g.b[bi]) { finish('B' + bi); return; }
+            }
+            requestAnimationFrame(escucha);
+          };
+          requestAnimationFrame(escucha);
+        }
       };
       row.appendChild(label); row.appendChild(btn); grid.appendChild(row);
     }
@@ -5372,32 +5583,64 @@ function renderCharUI(note) {
                0, 0, pv.width, pv.height);
   renderHairUI();
 }
-let charReturn = 'scr-main';
-function openChar(volverA) {
+let charReturn = 'scr-main', charWho = null;
+function openChar(volverA, jugador) {
   charReturn = volverA || 'scr-main';
-  $('nick').value = PREFS.nick || $('nick').value || '';
-  charSkin = PREFS.skin || charSkin;
-  if (PREFS.fit !== null) charFit = PREFS.fit;
-  if (PREFS.hair !== null) charHair = PREFS.hair;
-  charHairCol = PREFS.hairCol || charHairCol;
+  charWho = jugador || null;                            /* null = las preferencias guardadas */
+  if (charWho) {                                        /* editando a un jugador de la sala */
+    $('nick').value = charWho.nick || '';
+    charSkin = charWho.skin || charSkin;
+    charFit = charWho.fit|0;
+    charHair = charWho.hair|0;
+    charHairCol = charWho.hairCol || charHairCol;
+  } else {
+    $('nick').value = PREFS.nick || $('nick').value || '';
+    charSkin = PREFS.skin || charSkin;
+    if (PREFS.fit !== null) charFit = PREFS.fit;
+    if (PREFS.hair !== null) charHair = PREFS.hair;
+    charHairCol = PREFS.hairCol || charHairCol;
+  }
   charHue = hueOf(charHairCol);
+  $('char-title').textContent = charWho
+    ? 'PERSONAJE · ' + (charWho.nick || 'JUGADOR')
+    : 'PERSONALIZACIÓN';
   drawSkinField();
   renderCharUI();
   showScreen('scr-char');
 }
+/* en el mismo equipo eligen por turnos: primero el J1, luego el J2... */
+let upgCola = [], upgCartas = [], upgSel = 0, upgQuien = null;
 function openUpgrades() {
+  upgCola = localesVivos();
+  if (!upgCola.length) upgCola = [me()].filter(Boolean);
+  siguienteMejora();
+}
+function siguienteMejora() {
+  const p = upgCola.shift();
+  upgQuien = p || null; upgCartas = []; upgSel = 0;
+  if (p && p.pad !== null && p.pad !== undefined) {      /* que suelte antes de elegir */
+    p.navOK = true; p.navL = true; p.navR = true;
+  }
+  if (!p) {                                             /* ya han elegido todos */
+    showScreen(null);
+    G.state = 'run';
+    if (!NET.online) { G.portalOn = true; addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b'); }
+    else addMsg('ESPERANDO AL RESTO DEL EQUIPO…', '#9fd0ff');
+    lockPointer();
+    return;
+  }
   G.state = 'upgrade';
   if (document.pointerLockElement) document.exitPointerLock();
-  const p = me();
   const pool = UPGRADES.filter(u => !p.up.taken.includes(u.id) || ['maxhp','speed','rate','stamina','melee','crit'].includes(u.id));
   const opts = [];
   const bag = pool.slice();
   for (let i=0;i<3 && bag.length;i++) opts.push(bag.splice((Math.random()*bag.length)|0,1)[0]);
   const box = $('upg-cards');
   box.innerHTML = '';
-  $('upg-title').textContent = BOSS_ROOMS[G.room]
+  const quien = (localesVivos().length > 1) ? 'J' + ((p.slot|0)+1) + ' · ' + (p.nick||'') + ' · ' : '';
+  $('upg-title').textContent = quien + (BOSS_ROOMS[G.room]
     ? 'BOTÍN DE JEFE · ELIGE UNA MEJORA'
-    : 'SALA ' + G.room + ' · ELIGE UNA MEJORA';
+    : 'SALA ' + G.room + ' · ELIGE UNA MEJORA');
   for (const u of opts) {
     const card = document.createElement('div');
     card.className = 'card';
@@ -5406,18 +5649,40 @@ function openUpgrades() {
       u.apply(p.up); p.up.taken.push(u.id);
       applyUpgradeStats(p);
       if (u.id === 'maxhp') p.hp = Math.min(p.maxhp, p.hp+25);
-      addMsg('MEJORA: ' + u.name, '#ffd45e');
-      NET.send({ t:'upgrade', id:G.meId, name:u.name });
-      if (G.isHost) markUpgradeDone(G.meId);
-      showScreen(null);
-      G.state = 'run';
-      if (!NET.online) { G.portalOn = true; addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b'); }
-      else addMsg('ESPERANDO AL RESTO DEL EQUIPO…', '#9fd0ff');
-      lockPointer();
+      addMsg((quien ? quien : '') + 'MEJORA: ' + u.name, '#ffd45e');
+      if (p.id === G.meId) {
+        NET.send({ t:'upgrade', id:G.meId, name:u.name });
+        if (G.isHost) markUpgradeDone(G.meId);
+      }
+      siguienteMejora();
     };
     box.appendChild(card);
+    upgCartas.push(card);
   }
+  $('upg-sub').textContent = (p.pad === null || p.pad === undefined)
+    ? 'Se acumulan durante la run · se pierden al morir'
+    : 'Mando ' + (p.pad+1) + ': cruceta o stick para moverte, disparar para elegir';
+  marcaMejora();
   showScreen('scr-upg');
+}
+function marcaMejora() {
+  if (!upgQuien || upgQuien.pad === null || upgQuien.pad === undefined) return;
+  upgCartas.forEach((c, i) => c.classList.toggle('sel', i === upgSel));
+}
+/* el que elige con mando se mueve con la cruceta o el stick y confirma */
+function navegaMejoras() {
+  const p = upgQuien;
+  if (!p || p.pad === null || p.pad === undefined || !upgCartas.length) return;
+  const g = PADS[p.pad]; if (!g) return;
+  const ax = g.ax[0] || 0;
+  const izq = padPulsado(p.pad, 'B14') || ax < -0.55;
+  const der = padPulsado(p.pad, 'B15') || ax > 0.55;
+  const ok  = padPulsado(p.pad, BINDS[p.slot||0].fire) || padPulsado(p.pad, 'B0');
+  if (izq && !p.navL) { upgSel = (upgSel + upgCartas.length - 1) % upgCartas.length; marcaMejora(); Snd.swap(); }
+  if (der && !p.navR) { upgSel = (upgSel + 1) % upgCartas.length; marcaMejora(); Snd.swap(); }
+  p.navL = izq; p.navR = der;
+  if (ok && !p.navOK) { p.navOK = true; upgCartas[upgSel].onclick(); return; }
+  p.navOK = ok;
 }
 function showEnd(win) {
   const p = me();
@@ -5455,15 +5720,18 @@ function resumeGame() {
 function backToMenu() {
   NET.close();
   G.state = 'menu'; G.players.clear(); G.enemies.length = 0;
-  G.isHost = false; G.room = 0; G.kills = 0; G.heads = 0; G.over = false;
+  G.isHost = false; G.room = 0; G.kills = 0; G.heads = 0; G.over = false; G.local = 0;
+  CAM = null; CTRL = null;
+  setView(0, 0, screen.w, screen.h);
   showScreen('scr-main');
 }
 /* --------------------------- inicio de run --------------------------- */
 function beginRun(room, seed) {
   G.state = 'run'; G.over = false; G.kills = 0; G.heads = 0; G.time = 0;
   G.nPlayers = Math.max(1, G.players.size);
-  const p = me();
-  if (p) { initLocal(p); p.alive = true; p.down = false; }
+  const yo = G.players.get(G.meId);                     /* solo, anfitrion o cliente */
+  if (yo && !yo.isLocal) { yo.isLocal = true; yo.slot = 0; yo.pad = null; }
+  for (const q of localesVivos()) { initLocal(q); q.alive = true; q.down = false; }
   for (const q of G.players.values()) { q.alive = true; q.down = false; q.hp = q.maxhp || 100; }
   showScreen(null);
   startRoom(room, seed);
@@ -5496,11 +5764,52 @@ function fillDiffSelects() {
 }
 fillDiffSelects();
 setTimeout(() => { try { renderHomePreview(); } catch(e){} }, 0);
+/* ---------------------------------------------------------------------
+   Multijugador en un mismo equipo: hasta cuatro, el J1 con teclado y raton
+   y el resto con mando. Se entra pulsando cualquier boton del mando en la
+   sala de espera.
+   --------------------------------------------------------------------- */
+function prepararLocal() {
+  NET.online = false; NET.code = ''; G.isHost = true; G.meId = 'L1'; G.hostId = 'L1';
+  G.local = 1;
+  G.players.clear();
+  const p = makePlayer('L1', miNick(), mySkin(), 1, myFit(), myHair(), myHairCol());
+  p.isLocal = true; p.slot = 0; p.pad = null;
+  G.players.set('L1', p);
+  G.ff = 0; G.nPlayers = 1;
+  showScreen('scr-lobby');
+  renderLobby();
+}
+/* en la sala local, un boton en un mando libre mete a ese jugador */
+function fichajePorMando() {
+  if (!G.local || G.state !== 'menu') return;
+  if (!$('scr-lobby').classList.contains('on')) return;
+  pollPads();
+  const usados = new Set();
+  for (const q of G.players.values()) if (q.pad !== null && q.pad !== undefined) usados.add(q.pad);
+  for (let i = 0; i < PADS.length; i++) {
+    const g = PADS[i];
+    if (!g || usados.has(i)) continue;
+    if (!g.b.some(Boolean)) continue;
+    if (G.players.size >= MAX_LOCALES) { addMsg('SALA LOCAL LLENA (4)', '#ff8a7a'); return; }
+    const n = G.players.size + 1;
+    const q = makePlayer('L'+n, 'JUGADOR ' + n, pick(SKINS), n,
+                         (Math.random()<0.5?0:1), (Math.random()*HAIRS.length)|0, pick(HAIR_NAT));
+    q.isLocal = true; q.slot = n-1; q.pad = i;
+    G.players.set(q.id, q);
+    G.nPlayers = G.players.size;
+    Snd.pick();
+    addMsg('MANDO ' + (i+1) + ' → JUGADOR ' + n, '#8ce89b');
+    renderLobby();
+    return;
+  }
+}
 /* un jugador: se pasa igual por la sala, con la ranura P1 sola */
 function prepararSolo() {
   NET.online = false; NET.code = ''; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
   G.players.clear();
   const p = makePlayer('SOLO', miNick(), mySkin(), 1, myFit(), myHair(), myHairCol());
+  p.isLocal = true; p.slot = 0; p.pad = null;
   G.players.set('SOLO', p);
   G.ff = 0; G.nPlayers = 1;
   showScreen('scr-lobby');
@@ -5509,7 +5818,8 @@ function prepararSolo() {
 function soloRun() {
   G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
   G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
-  G.ff = 0; G.nPlayers = 1;
+  G.ff = parseInt($('sel-ff').value,10) || 0;
+  G.nPlayers = G.players.size;                          /* en local cuentan todos */
   showScreen(null);
   beginRun(0, (Math.random()*1e9)|0);
 }
@@ -5628,7 +5938,7 @@ $('tile-host').onclick = () => {
 };
 $('tile-joing').onclick = () => { showScreen('scr-join'); $('join-msg').textContent = ''; };
 $('tile-open').onclick = () => partidaAbierta();
-$('tile-local').onclick = () => { $('mp-msg').textContent = 'Jugar en el mismo dispositivo llegará más adelante.'; };
+$('tile-local').onclick = () => { Snd.init(); prepararLocal(); };
 $('btn-join-go').onclick = () => {
   const code = ($('join-code').value||'').trim().toUpperCase();
   const nick = ($('nick').value || 'JUGADOR').slice(0,16).toUpperCase();
@@ -5641,6 +5951,15 @@ $('btn-join-back').onclick = () => showScreen('scr-mp');
 $('btn-char-x').onclick = () => guardarPersonaje(true);
 $('btn-char-save').onclick = () => guardarPersonaje(true);
 function guardarPersonaje(volver) {
+  if (charWho) {                                        /* solo ese jugador de la sala local */
+    charWho.nick = (($('nick').value || charWho.nick || 'JUGADOR').slice(0,16)).toUpperCase();
+    charWho.skin = charSkin; charWho.fit = charFit;
+    charWho.hair = charHair; charWho.hairCol = charHairCol;
+    charWho = null;
+    if (volver) showScreen(charReturn);
+    renderLobby();
+    return;
+  }
   PREFS.skin = charSkin; PREFS.fit = charFit;
   PREFS.hair = charHair; PREFS.hairCol = charHairCol;
   PREFS.nick = ($('nick').value || '').slice(0,16);
@@ -5712,9 +6031,14 @@ $('btn-restart').onclick = () => {
   showScreen(null);
   beginRun(0, seed);
 };
-$('btn-keys-reset').onclick = () => { KEYS = Object.assign({}, DEFAULT_KEYS); saveKeys(); renderKeys(); };
+$('btn-keys-reset').onclick = () => {
+  if (keySlot === 0) { KEYS = Object.assign({}, DEFAULT_KEYS); BINDS[0] = KEYS; saveKeys(); }
+  else { BINDS[keySlot] = Object.assign({}, DEFAULT_PAD); savePads(); }
+  renderKeys();
+};
 $('btn-fullscreen').onclick = () => { alternarPantallaCompleta(); setTimeout(avisoTeclas, 300); };
 $('btn-start').onclick = () => { if (NET.online) startRunHost(); else soloRun(); };
+setInterval(fichajePorMando, 120);                      /* escucha de mandos en la sala local */
 $('btn-lobby-char').onclick = () => openChar('scr-lobby');
 $('btn-lobby-back').onclick = () => backToMenu();
 $('btn-end-back').onclick = () => backToMenu();
@@ -5742,12 +6066,17 @@ function frame(now) {
     if (G.cineT <= 0) { $('cine').classList.remove('on'); G.state = 'run'; lockPointer(); }
   }
   G.frames++;
+  if (G.state === 'upgrade') { pollPads(); navegaMejoras(); }
   const enLinea = NET.online && (G.state === 'pause' || G.state === 'upgrade');
   if (G.state === 'run' || G.state === 'cine' || enLinea) {
     G.time += dt;
     updateLights(dt);
     const p = me();
-    if (G.state === 'run') updateLocal(p, dt);
+    pollPads();
+    if (G.state === 'run') {
+      for (const jug of localesVivos()) { CAM = jug; updateLocal(jug, dt); }
+      CTRL = null; CAM = null;
+    }
     if (G.isHost && G.upgWait) {                          /* nadie se queda esperando eternamente */
       G.upgT -= dt;
       if (G.upgT <= 0) { addMsg('SE ACABÓ EL TIEMPO DE ELEGIR', '#ffd45e'); openPortalAfterUpgrades(); }
@@ -5798,25 +6127,77 @@ function frame(now) {
     }
   }
   /* ------------------------------ pintado ------------------------------ */
-  const p = me();
-  if ((G.state === 'run' || G.state === 'cine' || G.state === 'upgrade' || G.state === 'end' || G.state === 'pause') && p && MAP.grid) {
-    const shX = p.shake ? rnd(-p.shake,p.shake)*view.s*0.35 : 0;
-    const shY = p.shake ? rnd(-p.shake,p.shake)*view.s*0.35 : 0;
-    ctx.save();
-    if (shX||shY) ctx.translate(shX, shY);
-    ctx.beginPath();
-    ctx.rect(-Math.abs(shX)-2, -Math.abs(shY)-2, view.w+Math.abs(shX)*2+4, view.v3+Math.abs(shY)+2);
-    ctx.clip();
-    renderWorld(); renderDecals(); renderExitCircle(); renderNadeArc(); renderMotes(); renderSprites(); renderWeapon();
-    ctx.restore();
-    renderHUD();
+  const enJuego = (G.state === 'run' || G.state === 'cine' || G.state === 'upgrade' ||
+                   G.state === 'end' || G.state === 'pause');
+  if (enJuego && MAP.grid && localesVivos().length) {
+    const rects = repartoPantalla(localesVivos().length);
+    const lista = localesVivos();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle = '#08080c'; ctx.fillRect(0, 0, screen.w, screen.h);
+    for (let i = 0; i < lista.length; i++) {
+      const jug = lista[i], r = rects[i];
+      setView(r.x, r.y, r.w, r.h);
+      CAM = jug; updateDir(jug);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+      ctx.translate(r.x, r.y);
+      const shX = jug.shake ? rnd(-jug.shake,jug.shake)*view.s*0.35 : 0;
+      const shY = jug.shake ? rnd(-jug.shake,jug.shake)*view.s*0.35 : 0;
+      ctx.save();
+      if (shX||shY) ctx.translate(shX, shY);
+      ctx.beginPath();
+      ctx.rect(-Math.abs(shX)-2, -Math.abs(shY)-2, view.w+Math.abs(shX)*2+4, view.v3+Math.abs(shY)+2);
+      ctx.clip();
+      renderWorld(); renderDecals(); renderExitCircle(); renderNadeArc(); renderMotes(); renderSprites(); renderWeapon();
+      ctx.restore();
+      renderHUD();
+      ctx.restore();
+    }
+    CAM = null;
+    if (lista.length > 1) marcoDivision(rects);
+    setView(0, 0, screen.w, screen.h);
   } else {
-    ctx.fillStyle = '#08080c'; ctx.fillRect(0,0,view.w,view.h);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle = '#08080c'; ctx.fillRect(0,0,screen.w,screen.h);
   }
   fpsN++; fpsT += dt;
   if (fpsT >= 0.5) { fps = Math.round(fpsN/fpsT); fpsT = 0; fpsN = 0; }
 }
 
+/* ---------------------------------------------------------------------
+   Pantalla dividida al estilo Black Ops: dos jugadores en franjas
+   horizontales, tres con dos arriba y uno centrado abajo, y cuatro en
+   cuadrantes. Cada recuadro es del mismo tamano, asi que los buffers del
+   render solo se rehacen al cambiar de reparto.
+   --------------------------------------------------------------------- */
+function repartoPantalla(n) {
+  const W = screen.w, H = screen.h;
+  if (n <= 1) return [{ x:0, y:0, w:W, h:H }];
+  /* todos los recuadros miden lo mismo (si sobra un pixel se solapan, que se
+     tapa al pintar) para no rehacer los buffers del render cada fotograma */
+  const w2 = Math.ceil(W/2), h2 = Math.ceil(H/2);
+  if (n === 2) return [{ x:0, y:0, w:W, h:h2 }, { x:0, y:H-h2, w:W, h:h2 }];
+  if (n === 3) return [{ x:0, y:0, w:w2, h:h2 }, { x:W-w2, y:0, w:w2, h:h2 },
+                       { x:Math.round((W-w2)/2), y:H-h2, w:w2, h:h2 }];
+  return [{ x:0, y:0, w:w2, h:h2 }, { x:W-w2, y:0, w:w2, h:h2 },
+          { x:0, y:H-h2, w:w2, h:h2 }, { x:W-w2, y:H-h2, w:w2, h:h2 }];
+}
+function marcoDivision(rects) {
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+  ctx.lineWidth = Math.max(3, screen.h*0.005);
+  for (const r of rects) ctx.strokeRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = 'rgba(180,150,90,0.35)';
+  ctx.lineWidth = Math.max(1, screen.h*0.0016);
+  for (const r of rects) ctx.strokeRect(r.x, r.y, r.w, r.h);
+}
+/* jugadores que se manejan desde este equipo, en orden de ranura */
+function localesVivos() {
+  const out = [];
+  for (const p of G.players.values()) if (p.isLocal) out.push(p);
+  out.sort((a,b) => a.order - b.order);
+  return out;
+}
 /* ------------------------------- arranque ---------------------------- */
 buildWallTextures();
 buildFloorTextures();
