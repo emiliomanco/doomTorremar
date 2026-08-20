@@ -178,7 +178,7 @@
     <div class="tile" id="tile-local">
       <div class="tico">🎮</div>
       <h3>MISMO DISPOSITIVO</h3>
-      <p>Hasta 4 en pantalla dividida · J1 teclado, resto con mando</p>
+      <p>Hasta 4 en pantalla dividida · J1 teclado, resto con mando · se puede invitar a otras PCs</p>
     </div>
   </div>
   <div class="warn" id="mp-msg"></div>
@@ -268,6 +268,8 @@
         <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select></span>
     </div>
     <div class="lbar">
+      <span class="row" id="char-locales" style="gap:6px;width:auto"></span>
+      <button id="btn-invitar">INVITAR ONLINE</button>
       <button id="btn-lobby-char">PERSONALIZAR</button>
       <button id="btn-start" class="go">START</button>
     </div>
@@ -505,8 +507,11 @@ const KEY_LABELS = {
   dash:'Dash / esquivar (i-frames)', fire:'Disparar', alt:'Fuego alternativo', reload:'Recargar',
   heal:'Cantimplora (curar)', nade:'Lanzar granada (sin cambiar de arma)',
   w1:'1 · Machete', w2:'2 · Glock 19', w3:'3 · Remington 870', w4:'4 · M16', w5:'5 · Frag Grenade',
+  wprev:'Arma anterior', wnext:'Arma siguiente',
   map:'Mapa', mute:'Silenciar'
 };
+/* en la lista de ARMAS el teclado lleva un numero por arma y el mando las rota */
+const ARMAS_MANDO = ['wprev','wnext'];
 const KEY_SECTIONS = [
   { title:'MOVIMIENTO', keys:['forward','back','left','right','sprint','crouch','jump','dash'] },
   { title:'COMBATE',    keys:['fire','alt','nade','reload','heal'] },
@@ -524,9 +529,9 @@ const PAD_BOTONES = {
   12:'CRUZ ↑', 13:'CRUZ ↓', 14:'CRUZ ←', 15:'CRUZ →', 16:'HOME'
 };
 const DEFAULT_PAD = {
-  fire:'B7', alt:'B6', nade:'B5', reload:'B2', heal:'B3',
+  fire:'B7', alt:'B6', nade:'B12', reload:'B2', heal:'B3',
   jump:'B0', dash:'B1', crouch:'B10', sprint:'B11',
-  w1:'B14', w2:'B12', w3:'B15', w4:'B13', w5:'B4',
+  wprev:'B4', wnext:'B5',                               /* L1/LB y R1/RB rotan el arma */
   map:'B8', mute:'B16'
 };
 const MAX_LOCALES = 4;
@@ -2403,6 +2408,18 @@ const G = {
   frames:0, heads:0
 };
 const me = () => G.players.get(G.meId);
+/* Cada equipo (PC) tiene un id base y sus jugadores de sofa cuelgan de el:
+   HOST, HOST~2, HOST~3...  Asi ocho jugadores repartidos entre varias PCs
+   siguen teniendo un id unico en la red. */
+function baseDeId(id) { const i = String(id).indexOf('~'); return i < 0 ? String(id) : String(id).slice(0, i); }
+function ranuraDeId(id) { const i = String(id).indexOf('~'); return i < 0 ? 0 : (parseInt(String(id).slice(i+1),10)||1) - 1; }
+function idDeRanura(base, i) { return i ? base + '~' + (i+1) : base; }
+function miBase() { return baseDeId(G.meId || 'L1'); }
+function esLocalId(id) { const p = G.players.get(id); return !!(p && p.isLocal); }
+/* Ranuras de este equipo. LOC[0] es siempre el del teclado y raton; las
+   demas llegan al pulsar un boton en un mando libre. Vale igual para una
+   partida a solas, para una en el mismo sofa y para una en red. */
+let LOC = [];
 /* en pantalla dividida los avisos y el sonido se miden desde el local mas
    cercano al suceso, que es el que lo esta viviendo */
 function localCerca(x, y) {
@@ -3008,7 +3025,8 @@ const BINDS = [KEYS, Object.assign({}, DEFAULT_PAD), Object.assign({}, DEFAULT_P
                Object.assign({}, DEFAULT_PAD)];
 try {
   const g = JSON.parse(localStorage.getItem('torremar.pads') || 'null');
-  if (g) for (let i=1;i<4;i++) if (g[i]) Object.assign(BINDS[i], g[i]);
+  if (g) for (let i=1;i<4;i++) if (g[i])
+    for (const k in DEFAULT_PAD) if (g[i][k] !== undefined) BINDS[i][k] = g[i][k];
 } catch (e) {}
 function savePads() {
   try { localStorage.setItem('torremar.pads', JSON.stringify([null, BINDS[1], BINDS[2], BINDS[3]])); }
@@ -3122,6 +3140,13 @@ function unlockWeapon(i, bossName) {
   killFeed('🔓 ' + WEAPONS[i].name, '#8ce89b');
   Snd.pick();
 }
+/* pasa a la siguiente arma desbloqueada; dir 1 adelante, -1 atras */
+function rotarArma(p, dir) {
+  const paso = dir > 0 ? 1 : 4;
+  let i = p.weapon;
+  for (let k=0;k<5;k++) { i = (i + paso) % 5; if (!p.unlocked || p.unlocked[i]) break; }
+  selectWeapon(p, i);
+}
 function selectWeapon(p, i) {
   if (i === p.weapon || i < 0 || i > 4 || p.down) return;
   if (p.unlocked && !p.unlocked[i]) {
@@ -3229,7 +3254,7 @@ function fire(p, alt) {
       from:'player', owner:p.id, life:9, fuse:mecha, bounces:6, scale:0.30 });
     Snd.pin(); Snd.throwN();
     if (alt) addMsg('MECHA CORTA · ¡CÚBRETE!', '#ff8a5c');
-    NET.send({ t:'nade', x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
+    NET.send({ t:'nade', id:p.id, x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
     return;
   }
   if (p.weapon !== 0) {                                  /* el fogonazo ilumina la sala */
@@ -3268,7 +3293,7 @@ function quickNade(p) {
     from:'player', owner:p.id, life:9, fuse:mecha, bounces:6, scale:0.30 });
   Snd.pin(); Snd.throwN();
   alertNoise(w.noise, p);
-  NET.send({ t:'nade', x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
+  NET.send({ t:'nade', id:p.id, x:p.x, y:p.y, ax:IN.dirX, ay:IN.dirY, f:mecha, v:vel });
 }
 function alertNoise(radius, quien) {
   const p = quien || me(); if (!p) return;
@@ -3397,9 +3422,9 @@ function explode(x, y, radius, dmg, fromId) {
     if (d > radius*0.8 || a.down) continue;
     const f = clamp(1-d/(radius*0.8), 0, 1);
     if (a.isLocal) damagePlayer(a, 34*f, x, y);
-    else if (G.ff && fromId === G.meId) {
+    else if (G.ff && esLocalId(fromId)) {
       NET.send({ t:'pdmg', id:a.id, dmg:34*f });
-      const p2 = me(); const self = Math.floor(p2.hp*0.8);
+      const p2 = G.players.get(fromId); const self = Math.floor(p2.hp*0.8);
       p2.hp = Math.max(1, p2.hp-self); p2.pain = 1;
       addMsg('☠ ¡HAS ALCANZADO A UN COMPAÑERO! -80% DE VIDA', '#ff3b30');
       NET.send({ t:'hp', id:p2.id, hp:p2.hp, down:false });
@@ -3490,7 +3515,8 @@ function updateLocal(p, dt) {
   }
   updateDir(p);                                         /* IN.* pasa a ser el de este */
   if (p.pad !== undefined && p.pad !== null) {          /* atajos que en teclado van por keydown */
-    for (let i=0;i<5;i++) if (flanco(p, 'w'+(i+1))) selectWeapon(p, i);
+    if (flanco(p, 'wnext')) rotarArma(p, 1);            /* R1 / RB */
+    if (flanco(p, 'wprev')) rotarArma(p, -1);           /* L1 / LB */
     if (flanco(p, 'mute')) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
     if (padPulsado(p.pad, 'B9') && !p.startHeld) openPause();   /* START */
     p.startHeld = padPulsado(p.pad, 'B9');
@@ -3909,8 +3935,10 @@ const NET = {
     this.peer.on('open', () => {
       this.online = true;
       G.isHost = true; G.meId = 'HOST'; G.hostId = 'HOST';
-      const p = makePlayer('HOST', nick, mySkin(), 1, myFit(), myHair(), myHairCol());
-      G.players.clear(); G.players.set('HOST', p);
+      G.players.clear();
+      if (!LOC.length) LOC = [locDePrefs()];
+      LOC[0].nick = nick;
+      sincronizarLocales();                             /* HOST, HOST~2, HOST~3... */
       onReady(code);
     });
     this.peer.on('error', (e) => onErr('Error de red: ' + (e.type||e.message||e)));
@@ -3936,9 +3964,12 @@ const NET = {
       conn.on('close', () => {
         const id = conn.peer;
         const pl = G.players.get(id);
-        this.conns.delete(id); G.players.delete(id); dropUpgradeWait(id);
+        this.conns.delete(id);
+        for (const k of [...G.players.keys()])           /* se lleva a los de su sofa */
+          if (baseDeId(k) === id) { G.players.delete(k); dropUpgradeWait(k); }
         if (pl) addMsg(pl.nick + ' SE HA DESCONECTADO', '#ff8a7a');
-        this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
+        reordenarJugadores();
+        this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
         renderLobby(); checkWipe();
       });
     });
@@ -3969,8 +4000,11 @@ const NET = {
     this.sendTo(id, { t:'kicked' });
     const c = this.conns.get(id);
     setTimeout(() => { if (c) c.close(); }, 250);
-    G.players.delete(id); this.conns.delete(id); dropUpgradeWait(id);
-    this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
+    for (const k of [...G.players.keys()])
+      if (baseDeId(k) === id) { G.players.delete(k); dropUpgradeWait(k); }
+    this.conns.delete(id);
+    reordenarJugadores();
+    this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
     renderLobby();
   },
   close() {
@@ -4073,8 +4107,9 @@ function onNet(from, m) {
         p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down;
         G.players.set(s.id, p);
       }
-      const meP = G.players.get(G.meId);
-      if (meP) initLocal(meP);
+      if (!LOC.length) LOC = [locDePrefs()];
+      marcarLocales();
+      if (LOC.length > 1) NET.send({ t:'locales', list:serializeLocales() });
       G.nPlayers = G.players.size;
       showScreen('scr-lobby'); renderLobby();
       break;
@@ -4091,12 +4126,37 @@ function onNet(from, m) {
         if (!p.isLocal) { p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down; }
         G.players.set(s.id, p);
       }
-      const meP = G.players.get(G.meId);
-      if (meP && !meP.isLocal) initLocal(meP);
+      marcarLocales();
       G.nPlayers = G.players.size;
       renderLobby();
       break;
     }
+    case 'locales': {                                  /* jugadores de sofa de esa PC */
+      if (!G.isHost) break;
+      for (const id of [...G.players.keys()])
+        if (baseDeId(id) === from && id !== from) { G.players.delete(id); dropUpgradeWait(id); }
+      for (const sl of (m.list || [])) {
+        const i = sl.i|0;
+        if (i === 0) {                                   /* el del teclado ya existe */
+          const p0 = G.players.get(from);
+          if (p0) { p0.nick = String(sl.nick||p0.nick).slice(0,16); p0.skin = sl.skin || p0.skin;
+                    p0.fit = sl.fit|0; p0.hair = sl.hair|0; p0.hairCol = sl.hairCol || p0.hairCol; }
+          continue;
+        }
+        if (i >= MAX_LOCALES) continue;
+        if (G.players.size >= MAX_PLAYERS) { NET.sendTo(from, { t:'lleno' }); break; }
+        const id = idDeRanura(from, i);
+        G.players.set(id, makePlayer(id, String(sl.nick||('JUGADOR '+(i+1))).slice(0,16),
+                                     sl.skin || pick(SKINS), 0, sl.fit|0, sl.hair|0,
+                                     sl.hairCol || pick(HAIR_NAT)));
+      }
+      reordenarJugadores();
+      G.nPlayers = G.players.size;
+      NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
+      renderLobby();
+      break;
+    }
+    case 'lleno': addMsg('LA PARTIDA VA LLENA: NO CABEN MÁS MANDOS', '#ff8a7a'); break;
     case 'full': alert('La sala está llena.'); backToMenu(); break;
     case 'kicked': alert('El anfitrión te ha expulsado.'); backToMenu(); break;
     case 'start': G.diff = m.diff; G.ff = m.ff; G.upgOn = (m.up === undefined ? 1 : m.up);
@@ -4162,7 +4222,7 @@ function onNet(from, m) {
     case 'nade': {
       if (G.isHost) { const v = m.v || 7.2;
         G.projectiles.push({ id:entId++, x:m.x, y:m.y, vx:m.ax*v, vy:m.ay*v, vz:m.f?2.4:3.0, z:0.75,
-        grav:1, dmg:0, r:0.16, spr:'nade', from:'player', owner:from, life:9, fuse:m.f||2.2, bounces:6, scale:0.30 }); }
+        grav:1, dmg:0, r:0.16, spr:'nade', from:'player', owner:m.id || from, life:9, fuse:m.f||2.2, bounces:6, scale:0.30 }); }
       break;
     }
     case 'wantNext': if (G.isHost && G.portalOn) nextRoom(); break;
@@ -4384,8 +4444,9 @@ function collectSprites() {
                 tag:(e.boss||e.mini)?e.def.name:(e.elite&&e.alive?'★ '+e.def.name:null), boss:e,
                 ent:e.alive?e:null });
   }
+  const yoCam = cam();
   for (const pl of G.players.values()) {
-    if (pl.isLocal) continue;
+    if (pl === yoCam) continue;                          /* solo se oculta el de esta pantalla */
     const wk = WEAPONS[pl.weapon] ? WEAPONS[pl.weapon].key : 'GLOCK';
     const st = pl.down ? 'dead' : (pl.anim>0 ? 'attack' : 'walk');
     const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down, pl.hair, pl.hairCol);
@@ -5249,7 +5310,7 @@ function showScreen(id) {
   if (id === 'scr-main') renderHomePreview();          /* el mosaico muestra tu personaje */
 }
 function renderLobby() {
-  const online = NET.online, local = !!G.local && !online;
+  const online = NET.online, local = !!G.local || LOC.length > 1;
   const jug = [...G.players.values()].sort((a,b)=>a.order-b.order);
   const yo = G.meId;
   /* El local va en el centro y el resto se reparte a los lados, de dentro
@@ -5285,13 +5346,13 @@ function renderLobby() {
     sl.className = 'pslot';
     sl.textContent = 'P' + (jug.indexOf(p)+1) + (p.id === yo ? ' · TÚ' : '');
     pod.appendChild(glow); pod.appendChild(cv); pod.appendChild(nk); pod.appendChild(sl);
-    if (online && G.isHost && p.id !== G.hostId) {
-      const b = document.createElement('button');
+    if (online && G.isHost && !p.isLocal && p.id === baseDeId(p.id)) {
+      const b = document.createElement('button');      /* solo se expulsa a una PC entera */
       b.className = 'red kick'; b.textContent = 'EXPULSAR';
       b.onclick = () => NET.kick(p.id);
       pod.appendChild(b);
     }
-    if (local) {                                        /* cada uno edita el suyo */
+    if (p.isLocal) {                                    /* los de este equipo: mando y skin */
       const s2 = document.createElement('div');
       s2.className = 'ptag';
       s2.textContent = (p.pad === null || p.pad === undefined) ? '⌨ TECLADO' : '🎮 MANDO ' + (p.pad+1);
@@ -5300,6 +5361,12 @@ function renderLobby() {
       b.className = 'kick'; b.textContent = 'PERSONAJE';
       b.onclick = () => openChar('scr-lobby', p);
       pod.appendChild(b);
+      if ((p.slot|0) > 0) {
+        const q = document.createElement('button');
+        q.className = 'red kick'; q.textContent = 'SACAR';
+        q.onclick = () => { LOC.splice(p.slot|0, 1); if (LOC.length < 2) G.local = 0; sincronizarLocales(); };
+        pod.appendChild(q);
+      }
     }
     stage.appendChild(pod);
   }
@@ -5318,24 +5385,38 @@ function renderLobby() {
   $('lobby-list').innerHTML = '';
   const mando = G.isHost;
   $('host-controls').style.display = mando ? 'flex' : 'none';
-  $('ff-label').style.display = online ? '' : 'none';
   $('sel-ff').style.display = (online || local) ? '' : 'none';
   $('ff-label').style.display = (online || local) ? '' : 'none';
   $('code-row').style.display = online ? 'flex' : 'none';
+  /* desde la sala del sofa se puede abrir la partida a otras PCs */
+  $('btn-invitar').style.display = (!online && local && !G.over) ? '' : 'none';
   $('empty-list').style.display = (online || local) ? 'flex' : 'none';
   $('btn-start').style.display = mando ? '' : 'none';
-  $('btn-lobby-char').style.display = local ? 'none' : '';
+  /* con varios en el mismo equipo, cada uno tiene su boton al lado de START */
+  const cl = $('char-locales');
+  cl.innerHTML = '';
+  const mios = [...G.players.values()].filter(q => q.isLocal).sort((a,b)=>(a.slot|0)-(b.slot|0));
+  if (mios.length > 1) for (const q of mios) {
+    const b = document.createElement('button');
+    b.textContent = 'PERSONALIZAR J' + ((q.slot|0)+1);
+    b.onclick = () => openChar('scr-lobby', q);
+    cl.appendChild(b);
+  }
+  $('btn-lobby-char').style.display = (mios.length > 1) ? 'none' : '';
   $('sel-upg').value = String(G.upgOn ? 1 : 0);
   const sinMej = G.upgOn ? '' : ' · SIN MEJORAS: no habrá botín en las salas 5, 15, 25, 35 ni 45';
-  $('lobby-hint').textContent = local
-    ? 'Pulsa cualquier botón de un mando para entrar (hasta 4). El J1 va con teclado.' + sinMej
-    : !online
-    ? 'Partida en solitario. Elige dificultad y dale a START.' + sinMej
-    : (mando ? 'Hasta 8 jugadores. Cuantos más entren, más enemigos habrá y más fuertes serán (los jefes, aún más).'
-             : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name + (G.ff?' · fuego amigo ON':'')) + sinMej;
+  const pista = 'Pulsa cualquier botón de un mando libre para entrar (hasta 4 por equipo). El J1 va con teclado.';
+  $('lobby-hint').textContent = online
+    ? (mando ? 'Hasta 8 jugadores entre todas las PCs. ' + pista
+             : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name +
+               (G.ff?' · fuego amigo ON':'') + ' · ' + pista) + sinMej
+    : local
+    ? pista + sinMej
+    : 'Partida en solitario. Elige dificultad y dale a START.' + sinMej;
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
   $('lobby-title').textContent = online
-    ? 'SALA DE ESPERA · ' + G.players.size + '/' + MAX_PLAYERS
+    ? 'SALA DE ESPERA · ' + G.players.size + '/' + MAX_PLAYERS +
+      (mios.length > 1 ? '  ·  ESTE EQUIPO ' + mios.length + '/' + MAX_LOCALES : '')
     : (local ? 'MISMO DISPOSITIVO · ' + G.players.size + '/' + MAX_LOCALES
              : 'PARTIDA EN SOLITARIO');
 }
@@ -5381,7 +5462,11 @@ function renderKeys() {
   box.innerHTML = '';
   box.style.display = 'block';
   for (const sec of KEY_SECTIONS) {
-    const claves = mando ? sec.keys.filter(k => !['forward','back','left','right'].includes(k)) : sec.keys;
+    let claves = sec.keys;
+    if (mando) {
+      claves = claves.filter(k => !['forward','back','left','right'].includes(k));
+      if (sec.title === 'ARMAS') claves = ARMAS_MANDO;
+    }
     if (!claves.length) continue;
     const h = document.createElement('div');
     h.style.cssText = 'grid-column:1/-1;margin:10px 0 4px;font-family:Impact,sans-serif;letter-spacing:2px;color:#ffb347';
@@ -5400,7 +5485,10 @@ function renderKeys() {
         const finish = (code) => {
           if (!vivo) return;
           vivo = false;
-          for (const otro in mapa) if (otro !== k && mapa[otro] === code) mapa[otro] = '';
+          /* si ese boton ya estaba cogido, los dos se intercambian y ninguno
+             se queda sin asignar */
+          const anterior = mapa[k];
+          for (const otro in mapa) if (otro !== k && mapa[otro] === code) mapa[otro] = anterior || '';
           mapa[k] = code;
           if (mando) savePads(); else saveKeys();
           window.removeEventListener('keydown', onKey, true);
@@ -5419,14 +5507,18 @@ function renderKeys() {
         window.addEventListener('keydown', onKey, true);
         window.addEventListener('mousedown', onMouse, true);
         if (mando) {                                    /* espera a que se pulse en el mando */
+          let limpio = false;                           /* primero hay que soltarlo todo */
           const escucha = () => {
             if (!vivo) return;
             pollPads();
-            for (let gi = 0; gi < PADS.length; gi++) {
+            let pulsado = -1;
+            for (let gi = 0; gi < PADS.length && pulsado < 0; gi++) {
               const g = PADS[gi];
               if (!g) continue;
-              for (let bi = 0; bi < g.b.length; bi++) if (g.b[bi]) { finish('B' + bi); return; }
+              for (let bi = 0; bi < g.b.length; bi++) if (g.b[bi]) { pulsado = bi; break; }
             }
+            if (pulsado < 0) limpio = true;
+            else if (limpio) { finish('B' + pulsado); return; }
             requestAnimationFrame(escucha);
           };
           requestAnimationFrame(escucha);
@@ -5656,10 +5748,8 @@ function siguienteMejora() {
       applyUpgradeStats(p);
       if (u.id === 'maxhp') p.hp = Math.min(p.maxhp, p.hp+25);
       addMsg((quien ? quien : '') + 'MEJORA: ' + u.name, '#ffd45e');
-      if (p.id === G.meId) {
-        NET.send({ t:'upgrade', id:G.meId, name:u.name });
-        if (G.isHost) markUpgradeDone(G.meId);
-      }
+      NET.send({ t:'upgrade', id:p.id, name:u.name });
+      if (G.isHost) markUpgradeDone(p.id);
       siguienteMejora();
     };
     box.appendChild(card);
@@ -5725,6 +5815,7 @@ function resumeGame() {
 }
 function backToMenu() {
   NET.close();
+  LOC = [];
   G.state = 'menu'; G.players.clear(); G.enemies.length = 0;
   G.isHost = false; G.room = 0; G.kills = 0; G.heads = 0; G.over = false; G.local = 0;
   CAM = null; CTRL = null;
@@ -5775,51 +5866,86 @@ setTimeout(() => { try { renderHomePreview(); } catch(e){} }, 0);
    y el resto con mando. Se entra pulsando cualquier boton del mando en la
    sala de espera.
    --------------------------------------------------------------------- */
+function locDePrefs() {
+  return { nick: miNick(), skin: mySkin(), fit: myFit(), hair: myHair(), hairCol: myHairCol(), pad: null };
+}
+function serializeLocales() {
+  return LOC.map((l, i) => ({ i, nick:l.nick, skin:l.skin, fit:l.fit|0, hair:l.hair|0, hairCol:l.hairCol }));
+}
+function reordenarJugadores() { let i = 1; for (const p of G.players.values()) p.order = i++; }
+/* deja G.players a la altura de LOC; si somos cliente, se lo pide al anfitrion */
+function sincronizarLocales() {
+  const base = miBase();
+  if (NET.online && !G.isHost) { NET.send({ t:'locales', list:serializeLocales() }); renderLobby(); return; }
+  for (const id of [...G.players.keys()])
+    if (baseDeId(id) === base && ranuraDeId(id) >= LOC.length) G.players.delete(id);
+  LOC.forEach((l, i) => {
+    const id = idDeRanura(base, i);
+    let p = G.players.get(id);
+    if (!p) { p = makePlayer(id, l.nick, l.skin, 0, l.fit, l.hair, l.hairCol); G.players.set(id, p); }
+    p.nick = l.nick; p.skin = l.skin; p.fit = l.fit|0; p.hair = l.hair|0; p.hairCol = l.hairCol;
+    p.slot = i; p.pad = l.pad; p.isLocal = true;
+    if (!p.up) initLocal(p);
+  });
+  reordenarJugadores();
+  G.nPlayers = G.players.size;
+  if (NET.online) NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
+  renderLobby();
+}
+/* tras un welcome o un lobby, recupera cuales de la lista son de este equipo */
+function marcarLocales() {
+  const base = miBase();
+  for (const [id, p] of G.players) {
+    if (baseDeId(id) !== base) continue;
+    const r = ranuraDeId(id);
+    p.slot = r;
+    p.pad = LOC[r] ? LOC[r].pad : null;
+    if (!p.up) initLocal(p);
+    p.isLocal = true;
+  }
+}
 function prepararLocal() {
   NET.online = false; NET.code = ''; G.isHost = true; G.meId = 'L1'; G.hostId = 'L1';
   G.local = 1;
   G.players.clear();
-  const p = makePlayer('L1', miNick(), mySkin(), 1, myFit(), myHair(), myHairCol());
-  p.isLocal = true; p.slot = 0; p.pad = null;
-  G.players.set('L1', p);
-  G.ff = 0; G.nPlayers = 1;
+  LOC = [locDePrefs()];
+  G.ff = 0;
+  sincronizarLocales();
   showScreen('scr-lobby');
-  renderLobby();
 }
-/* en la sala local, un boton en un mando libre mete a ese jugador */
+/* en la sala, un boton en un mando libre mete a ese jugador */
 function fichajePorMando() {
-  if (!G.local || G.state !== 'menu') return;
+  if (G.state !== 'menu') return;
   if (!$('scr-lobby').classList.contains('on')) return;
+  if (!LOC.length) return;                              /* aun no hay equipo montado */
   pollPads();
   const usados = new Set();
-  for (const q of G.players.values()) if (q.pad !== null && q.pad !== undefined) usados.add(q.pad);
+  for (const l of LOC) if (l.pad !== null && l.pad !== undefined) usados.add(l.pad);
   for (let i = 0; i < PADS.length; i++) {
     const g = PADS[i];
     if (!g || usados.has(i)) continue;
     if (!g.b.some(Boolean)) continue;
-    if (G.players.size >= MAX_LOCALES) { addMsg('SALA LOCAL LLENA (4)', '#ff8a7a'); return; }
-    const n = G.players.size + 1;
-    const q = makePlayer('L'+n, 'JUGADOR ' + n, pick(SKINS), n,
-                         (Math.random()<0.5?0:1), (Math.random()*HAIRS.length)|0, pick(HAIR_NAT));
-    q.isLocal = true; q.slot = n-1; q.pad = i;
-    G.players.set(q.id, q);
-    G.nPlayers = G.players.size;
+    if (LOC.length >= MAX_LOCALES) { addMsg('ESTE EQUIPO YA VA LLENO (4)', '#ff8a7a'); return; }
+    if (NET.online && G.players.size >= MAX_PLAYERS) { addMsg('LA PARTIDA YA VA LLENA (8)', '#ff8a7a'); return; }
+    const n = LOC.length + 1;
+    LOC.push({ nick:'JUGADOR ' + n, skin:pick(SKINS), fit:(Math.random()<0.5?0:1),
+               hair:(Math.random()*HAIRS.length)|0, hairCol:pick(HAIR_NAT), pad:i });
+    G.local = 1;
     Snd.pick();
-    addMsg('MANDO ' + (i+1) + ' → JUGADOR ' + n, '#8ce89b');
-    renderLobby();
+    addMsg('MANDO ' + (i+1) + ' → J' + n, '#8ce89b');
+    sincronizarLocales();
     return;
   }
 }
 /* un jugador: se pasa igual por la sala, con la ranura P1 sola */
 function prepararSolo() {
   NET.online = false; NET.code = ''; G.isHost = true; G.meId = 'SOLO'; G.hostId = 'SOLO';
+  G.local = 0;
   G.players.clear();
-  const p = makePlayer('SOLO', miNick(), mySkin(), 1, myFit(), myHair(), myHairCol());
-  p.isLocal = true; p.slot = 0; p.pad = null;
-  G.players.set('SOLO', p);
-  G.ff = 0; G.nPlayers = 1;
+  LOC = [locDePrefs()];
+  G.ff = 0;
+  sincronizarLocales();
   showScreen('scr-lobby');
-  renderLobby();
 }
 function soloRun() {
   G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
@@ -5919,12 +6045,7 @@ window.addEventListener('mousemove', (ev) => {
 window.addEventListener('wheel', (ev) => {
   if (G.state !== 'run') return;
   const p = me(); if (!p) return;
-  {                                                     /* la rueda salta las bloqueadas */
-    const paso = ev.deltaY > 0 ? 1 : 4;
-    let i = p.weapon;
-    for (let k=0;k<5;k++) { i = (i + paso) % 5; if (!p.unlocked || p.unlocked[i]) break; }
-    selectWeapon(p, i);
-  }
+  rotarArma(p, ev.deltaY > 0 ? 1 : -1);                 /* la rueda salta las bloqueadas */
 }, { passive:true });
 cv.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
@@ -5957,13 +6078,16 @@ $('btn-join-back').onclick = () => showScreen('scr-mp');
 $('btn-char-x').onclick = () => guardarPersonaje(true);
 $('btn-char-save').onclick = () => guardarPersonaje(true);
 function guardarPersonaje(volver) {
-  if (charWho) {                                        /* solo ese jugador de la sala local */
-    charWho.nick = (($('nick').value || charWho.nick || 'JUGADOR').slice(0,16)).toUpperCase();
-    charWho.skin = charSkin; charWho.fit = charFit;
+  if (charWho) {                                        /* un jugador concreto de este equipo */
+    const r = charWho.slot|0;
+    const nick = (($('nick').value || charWho.nick || 'JUGADOR').slice(0,16)).toUpperCase();
+    if (LOC[r]) { LOC[r].nick = nick; LOC[r].skin = charSkin; LOC[r].fit = charFit;
+                  LOC[r].hair = charHair; LOC[r].hairCol = charHairCol; }
+    charWho.nick = nick; charWho.skin = charSkin; charWho.fit = charFit;
     charWho.hair = charHair; charWho.hairCol = charHairCol;
     charWho = null;
     if (volver) showScreen(charReturn);
-    renderLobby();
+    sincronizarLocales();                               /* y que se entere la red */
     return;
   }
   PREFS.skin = charSkin; PREFS.fit = charFit;
@@ -5975,6 +6099,8 @@ function guardarPersonaje(volver) {
   if (yo) {
     yo.nick = miNick(); yo.skin = charSkin; yo.fit = charFit;
     yo.hair = charHair; yo.hairCol = charHairCol;
+    if (LOC[0]) { LOC[0].nick = yo.nick; LOC[0].skin = charSkin; LOC[0].fit = charFit;
+                  LOC[0].hair = charHair; LOC[0].hairCol = charHairCol; }
     if (G.isHost) NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
     else NET.send({ t:'look', id:G.meId, nick:yo.nick, skin:yo.skin, fit:yo.fit, hair:yo.hair, hairCol:yo.hairCol });
   }
@@ -6044,6 +6170,14 @@ $('btn-keys-reset').onclick = () => {
 };
 $('btn-fullscreen').onclick = () => { alternarPantallaCompleta(); setTimeout(avisoTeclas, 300); };
 $('btn-start').onclick = () => { if (NET.online) startRunHost(); else soloRun(); };
+/* abre la partida del sofa a otras PCs conservando a los que ya estan */
+$('btn-invitar').onclick = () => {
+  $('lobby-hint').textContent = 'Creando sala…';
+  Snd.init();
+  NET.host(miNick(),
+    (code) => { renderLobby(); addMsg('SALA CREADA: ' + code + ' · YA PUEDEN ENTRAR DESDE OTRAS PCS', '#8ce89b'); },
+    (err) => { addMsg(err, '#ff8a7a'); renderLobby(); });
+};
 setInterval(fichajePorMando, 120);                      /* escucha de mandos en la sala local */
 $('btn-lobby-char').onclick = () => openChar('scr-lobby');
 $('btn-lobby-back').onclick = () => backToMenu();
@@ -6125,8 +6259,9 @@ function frame(now) {
       G.netT -= dt;
       if (G.netT <= 0) {
         G.netT = 1/15;
-        if (p) NET.send({ t:'pstate', id:p.id, x:+p.x.toFixed(2), y:+p.y.toFixed(2), a:+p.ang.toFixed(3),
-                          w:p.weapon, k:(p.walk|0)&3, d:p.down?1:0, h:Math.round(p.hp), n:p.cool>0?1:0 });
+        for (const q of localesVivos())                  /* todos los de este sofa */
+          NET.send({ t:'pstate', id:q.id, x:+q.x.toFixed(2), y:+q.y.toFixed(2), a:+q.ang.toFixed(3),
+                     w:q.weapon, k:(q.walk|0)&3, d:q.down?1:0, h:Math.round(q.hp), n:q.cool>0?1:0 });
         const every = G.players.size > 4 ? 3 : 2;         /* menos ancho de banda con lobby lleno */
         if (G.isHost && (G.seq++ % every === 0)) NET.send(worldSnapshot());
       }
@@ -6201,7 +6336,7 @@ function marcoDivision(rects) {
 function localesVivos() {
   const out = [];
   for (const p of G.players.values()) if (p.isLocal) out.push(p);
-  out.sort((a,b) => a.order - b.order);
+  out.sort((a,b) => (a.slot|0) - (b.slot|0));
   return out;
 }
 /* ------------------------------- arranque ---------------------------- */
