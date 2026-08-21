@@ -4058,6 +4058,10 @@ class Enemy {
     if (this.def.armor) amount *= (1 - this.def.armor);   /* escudo */
     /* un impacto fuerte interrumpe: los rasos se tambalean, los jefes no */
     if (!this.boss && amount > this.maxhp*0.20) this.stagger = this.mini ? 0.18 : 0.34;
+    /* un raso tocado de gravedad se retira unos metros antes de volver */
+    if (!this.boss && !this.mini && this.alive && this.hp - amount > 0 &&
+        this.hp - amount < this.maxhp*0.30 && Math.random() < 0.35)
+      this.backoff = Math.max(this.backoff || 0, 0.9);
     this.hp -= amount; this.flash = 0.16; this.lastHitBy = byId;
     /* un golpe muy por encima de lo que le quedaba lo revienta */
     if (!this.boss && this.hp <= -this.maxhp*0.22) this.gib = true;
@@ -4094,6 +4098,12 @@ class Enemy {
       G.combo++; G.comboT = 3.2;
       killFeed((this.elite?'★ ':'') + this.def.name + (G.combo>2 ? '   x'+G.combo : ''),
                this.boss||this.mini ? '#ff8a5c' : (this.elite ? '#ffd45e' : '#c9c3b2'));
+    }
+    /* a los de alrededor les da un vuelco: se apartan un instante */
+    if (!this.boss) for (const o of G.enemies) {
+      if (!o.alive || o === this || o.boss || o.mini) continue;
+      if (dist2(o.x, o.y, this.x, this.y) > 12.25) continue;
+      if (Math.random() < 0.45) o.backoff = Math.max(o.backoff || 0, rnd(0.25, 0.6));
     }
     const rev = !!this.gib;
     spawnParts('blood', this.x, this.y, 0.6, this.boss?20:(rev?26:12), rev?3.6:2.4, rev?2.3:1.7, 1.0);
@@ -4384,6 +4394,9 @@ class Enemy {
       else if (d > pref*1.55) { mvA = toA; move = true; }
       else { mvA = toA + Math.PI/2*(this.orbitDir || 1); move = true; speed *= 0.72; }
     }
+    else if ((this.backoff || 0) > 0 && !this.boss && !this.mini) {
+      this.backoff -= dt; mvA = toA + Math.PI; speed *= 1.25;   /* replegandose */
+    }
     else if (!this.los) { const fa = flowAngle(this, t); if (fa !== null) mvA = fa; }   /* sin vision, por el mapa */
     else if (def.kind === 'ranged' && !this.boss && !this.mini) {
       if (this.hp < this.maxhp*0.3 && d < def.keepMax) mvA = toA + Math.PI;   /* se repliega herido */
@@ -4391,6 +4404,15 @@ class Enemy {
       else if (d < def.keepMax) { mvA = toA + Math.PI/2*((this.walk%2<1)?1:-1); move = d > def.keepMin*1.1; }
     } else if (def.attack === 'hell' && d < 3.5) mvA = toA + Math.PI;
     else if (d < this.radius + 0.45) move = false;
+    else if (def.kind === 'melee' && !this.boss && !this.mini && this.dashing <= 0) {
+      /* no vienen todos en fila: cada uno tira por un lado y solo cierran
+         de frente en los ultimos metros */
+      if (this.flancoT === undefined || (this.flancoT -= dt) <= 0) {
+        this.flancoT = 1.6 + Math.random()*2.2;
+        this.flanco = (Math.random()*3 | 0) - 1;         /* -1, 0 o 1 */
+      }
+      if (this.flanco && d > 2.6) mvA = toA + this.flanco * clamp(0.85 - d*0.02, 0.30, 0.85);
+    }
     if (move) { const sp = speed*dt; moveEnt(this, Math.cos(mvA)*sp, Math.sin(mvA)*sp); this.walk += dt*speed*2.4; }
 
     /* --------- cuerpo a cuerpo / atropello --------- */
