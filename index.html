@@ -104,6 +104,8 @@
   .pod .ptag{font-size:10px;letter-spacing:1px;color:#9fd0ff;background:rgba(20,30,44,.7);
              border:1px solid #33506e;border-radius:6px;padding:1px 7px;margin-top:2px}
   .opt{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .cpane{display:none;gap:8px}
+  .cpane.on{display:flex}
   #host-controls select{max-width:172px}
   .pod .kick{font-size:9px;padding:2px 6px;margin-top:2px}
   .empties{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px}
@@ -113,13 +115,16 @@
     background:#0d1410;border:2px dashed #2f8f4a;border-radius:8px;padding:6px 16px}
   .lbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;width:100%}
   .hairgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;width:100%;
-    max-height:190px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:8px}
-  .hitem{background:#14110e;border:2px solid #5a4c33;border-radius:6px;cursor:pointer;padding:2px 0 3px;
-    display:flex;flex-direction:column;align-items:center;gap:1px;transition:.1s}
+    max-height:214px;overflow-y:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:8px}
+  .hairgrid::-webkit-scrollbar{width:8px}
+  .hairgrid::-webkit-scrollbar-thumb{background:#5a4c33;border-radius:4px}
+  .hitem{background:#14110e;border:2px solid #5a4c33;border-radius:6px;cursor:pointer;padding:2px 0 4px;
+    display:flex;flex-direction:column;align-items:center;gap:2px;transition:.1s;min-height:78px}
   .hitem:hover{border-color:#ffd45e}
   .hitem.sel{border-color:#ffd45e;background:#2c2415}
-  .hitem canvas{display:block;width:56px;height:44px;image-rendering:auto}
-  .hitem span{font-size:9px;color:#c9b48a;letter-spacing:.3px;text-align:center;line-height:1.05}
+  .hitem canvas{display:block;width:56px;height:48px;image-rendering:auto}
+  .hitem span{font-size:9px;color:#c9b48a;letter-spacing:.3px;text-align:center;line-height:1.05;
+    padding:0 2px;margin-top:auto}
 </style>
 <!-- CDN ligera de PeerJS para el canal de datos P2P (WebRTC) -->
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -190,51 +195,78 @@
   <h2 id="char-title">PERSONALIZACIÓN</h2>
   <div class="panel col">
     <div class="row" style="align-items:flex-start;gap:22px">
-      <div class="col" style="flex:1.15;min-width:300px">
-        <div class="muted">UNIFORME</div>
-        <div class="row" id="fit-list" style="justify-content:flex-start;gap:12px"></div>
-        <div class="muted" style="margin-top:6px">COLOR DE PIEL · solo tonos cálidos reales</div>
-        <canvas id="skin-field" width="300" height="120"
-                style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
-        <div class="row" style="justify-content:flex-start">
-          <span class="muted">HEX</span>
-          <input id="skin-hex" maxlength="7" value="#e8bd93" style="width:110px;font-family:'Courier New',monospace">
-          <div id="skin-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#e8bd93"></div>
+      <div class="col" style="flex:1.4;min-width:340px;align-items:stretch">
+        <div class="row" id="char-tabs" style="gap:6px;justify-content:flex-start"></div>
+
+        <div class="col cpane" id="pane-cuerpo" style="align-items:stretch">
+          <div class="muted">UNIFORME</div>
+          <div class="row" id="fit-list" style="justify-content:flex-start;gap:12px"></div>
+          <div class="muted" style="margin-top:6px">COLOR DE PIEL · solo tonos cálidos reales</div>
+          <canvas id="skin-field" width="300" height="120"
+                  style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
+          <div class="row" style="justify-content:flex-start">
+            <span class="muted">HEX</span>
+            <input id="skin-hex" maxlength="7" value="#e8bd93" style="width:110px;font-family:'Courier New',monospace">
+            <div id="skin-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#e8bd93"></div>
+          </div>
+          <div class="row" id="skin-presets" style="justify-content:flex-start;gap:6px"></div>
+          <div class="muted" id="skin-note" style="font-size:12px"></div>
         </div>
-        <div class="row" id="skin-presets" style="justify-content:flex-start;gap:6px"></div>
-        <div class="muted" id="skin-note" style="font-size:12px"></div>
+
+        <div class="col cpane" id="pane-pelo" style="align-items:stretch">
+          <div class="muted" id="hair-count">PEINADO</div>
+          <div class="hairgrid" id="hair-list"></div>
+          <div class="muted" style="margin-top:6px">COLOR DE PELO · cualquier color</div>
+          <canvas id="hair-hue" width="300" height="24"
+                  style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:6px;cursor:crosshair"></canvas>
+          <canvas id="hair-field" width="300" height="110"
+                  style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
+          <div class="row" style="justify-content:flex-start">
+            <span class="muted">HEX</span>
+            <input id="hair-hex" maxlength="7" value="#2a1f18" style="width:110px;font-family:'Courier New',monospace">
+            <div id="hair-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#2a1f18"></div>
+          </div>
+          <div class="row" id="hair-presets" style="justify-content:flex-start;gap:6px"></div>
+        </div>
+
+        <div class="col cpane" id="pane-rostro" style="align-items:stretch">
+          <div class="muted" id="cara-count">EXPRESIÓN</div>
+          <div class="hairgrid" id="cara-list"></div>
+          <div class="muted" id="vello-count">VELLO FACIAL</div>
+          <div class="hairgrid" id="vello-list"></div>
+        </div>
+
+        <div class="col cpane" id="pane-acc" style="align-items:stretch">
+          <div class="muted" id="gorro-count">CABEZA</div>
+          <div class="hairgrid" id="gorro-list"></div>
+          <div class="muted" id="gafas-count">GAFAS</div>
+          <div class="hairgrid" id="gafas-list"></div>
+          <div class="muted" style="margin-top:6px">COLOR DEL ACCESORIO</div>
+          <div class="row" id="acc-presets" style="justify-content:flex-start;gap:6px"></div>
+          <canvas id="acc-hue" width="300" height="24"
+                  style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:6px;cursor:crosshair"></canvas>
+          <div class="row" style="justify-content:flex-start">
+            <span class="muted">HEX</span>
+            <input id="acc-hex" maxlength="7" value="#c8352b" style="width:110px;font-family:'Courier New',monospace">
+            <div id="acc-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#c8352b"></div>
+          </div>
+        </div>
       </div>
-      <div class="col" style="flex:.85;min-width:220px;align-items:center">
+
+      <div class="col" style="flex:.8;min-width:230px;align-items:center">
         <input id="nick" maxlength="16" placeholder="Aliro Mera"
                style="text-align:center;font-size:18px;width:100%;max-width:230px">
         <canvas id="char-preview" width="206" height="308"
                 style="width:206px;height:308px;image-rendering:auto"></canvas>
-      </div>
-    </div>
-    <div class="row" style="align-items:flex-start;gap:22px">
-      <div class="col" style="flex:1.3;min-width:300px">
-        <div class="muted" id="hair-count">PEINADO</div>
-        <div class="hairgrid" id="hair-list"></div>
-      </div>
-      <div class="col" style="flex:1;min-width:250px">
-        <div class="muted">COLOR DE PELO · cualquier color</div>
-        <canvas id="hair-hue" width="300" height="24"
-                style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:6px;cursor:crosshair"></canvas>
-        <canvas id="hair-field" width="300" height="110"
-                style="width:100%;max-width:340px;border:2px solid #6b5a3c;border-radius:8px;cursor:crosshair"></canvas>
-        <div class="row" style="justify-content:flex-start">
-          <span class="muted">HEX</span>
-          <input id="hair-hex" maxlength="7" value="#2a1f18" style="width:110px;font-family:'Courier New',monospace">
-          <div id="hair-dot" style="width:30px;height:30px;border-radius:6px;border:2px solid #fff;background:#2a1f18"></div>
+        <div class="row">
+          <button id="btn-char-random">ALEATORIO</button>
+          <button id="btn-char-save" class="go">GUARDAR</button>
         </div>
-        <div class="row" id="hair-presets" style="justify-content:flex-start;gap:6px"></div>
+        <div class="muted" style="font-size:12px;text-align:center;max-width:230px">
+          Si no tocas nada, piel, ropa y pelo se sortean al entrar en partida.
+        </div>
       </div>
     </div>
-    <div class="row">
-      <button id="btn-char-random">ALEATORIO</button>
-      <button id="btn-char-save" class="go">GUARDAR</button>
-    </div>
-    <div class="muted">Si no tocas nada, piel, ropa y pelo se sortean al entrar en partida.</div>
   </div>
 </div>
 
@@ -413,7 +445,8 @@ const OUTFITS = [
     uniform:'tee', cuff:['#1b2352','#7d2231'] }
 ];
 /* preferencias de personaje: null = nunca tocado -> aleatorio como antes */
-const PREFS = { skin:null, fit:null, hair:null, hairCol:null, nick:null };
+const PREFS = { skin:null, fit:null, hair:null, hairCol:null, nick:null,
+                face:0, hat:0, eyewear:0, facial:0, accCol:null };
 try {
   const c = JSON.parse(localStorage.getItem('torremar.char') || 'null');
   if (c) {
@@ -422,6 +455,9 @@ try {
     PREFS.hair = (typeof c.hair === 'number') ? c.hair : null;
     PREFS.hairCol = c.hairCol || null;
     PREFS.nick = c.nick || null;
+    PREFS.face = c.face|0; PREFS.hat = c.hat|0;
+    PREFS.eyewear = c.eyewear|0; PREFS.facial = c.facial|0;
+    PREFS.accCol = c.accCol || null;
   }
 } catch (e) {}
 function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
@@ -448,6 +484,9 @@ const HAIR_NAT = ['#1a1208','#2a1f18','#3d2a17','#5a3a1e','#7a5228','#a06a33','#
 const myHair    = () => (PREFS.hair === null ? ((Math.random()*HAIRS.length)|0)
                                              : clamp(PREFS.hair|0, 0, HAIRS.length-1));
 const myHairCol = () => PREFS.hairCol || pick(HAIR_NAT);
+/* rasgos guardados del jugador de este equipo */
+const myAcc = () => ({ face:PREFS.face|0, hat:PREFS.hat|0, eyewear:PREFS.eyewear|0,
+                       facial:PREFS.facial|0, accCol:PREFS.accCol || ACC_COLS[0] });
 
 /* ---- color de piel: solo tonos calidos, nada de azules ni morados ---- */
 function hexToHsl(hex) {
@@ -1425,6 +1464,654 @@ function drawHairStyle(c, idx, cx, cy, rx, ry, col, cabecera) {
   g.alto = (k) => Math.min(ry*k, g.up*0.96);            /* altura util sobre el centro */
   c.save(); h.draw(c, g); c.restore();
 }
+/* =====================================================================
+   ROSTRO, GORRAS, GAFAS Y VELLO FACIAL
+   Todo son piezas sueltas que se dibujan sobre la cabeza que ya monto
+   figure(). Las opciones nuevas van por indice (o.face, o.hat, o.eyewear,
+   o.facial) y conviven con las banderas antiguas (o.angry, o.glasses...)
+   que siguen usando los jefes y los enemigos.
+   ===================================================================== */
+const CARAS = [
+  { id:'normal',   name:'NEUTRAL' },
+  { id:'enfadado', name:'ENFADADO' },
+  { id:'sonrisa',  name:'SONRISA' },
+  { id:'risa',     name:'CARCAJADA' },
+  { id:'chulo',    name:'CHULO' },
+  { id:'sorpresa', name:'SORPRESA' },
+  { id:'cansado',  name:'CANSADO' },
+  { id:'triste',   name:'TRISTE' },
+  { id:'malvado',  name:'MALVADO' },
+  { id:'grito',    name:'GRITO' },
+  { id:'guino',    name:'GUIÑO' },
+  { id:'poker',    name:'CARA DE PÓKER' }
+];
+const GORROS = [
+  { id:'none',    name:'NADA' },
+  { id:'gorra',   name:'GORRA' },
+  { id:'gorraatras', name:'GORRA AL REVÉS' },
+  { id:'beanie',  name:'GORRO DE LANA' },
+  { id:'bandana', name:'BANDANA' },
+  { id:'cinta',   name:'CINTA DEPORTIVA' },
+  { id:'boina',   name:'BOINA' },
+  { id:'casco',   name:'CASCO DE OBRA' },
+  { id:'cascos',  name:'AURICULARES' },
+  { id:'capucha', name:'CAPUCHA' },
+  { id:'birrete', name:'BIRRETE' },
+  { id:'corona',  name:'CORONA' },
+  { id:'cuernos', name:'CUERNOS' },
+  { id:'halo',    name:'AUREOLA' },
+  { id:'vincha',  name:'VINCHA CON PLUMA' }
+];
+const GAFAS = [
+  { id:'none',    name:'NADA' },
+  { id:'pasta',   name:'DE PASTA' },
+  { id:'finas',   name:'METÁLICAS' },
+  { id:'sol',     name:'DE SOL' },
+  { id:'visor',   name:'VISOR DEPORTIVO' },
+  { id:'esqui',   name:'MÁSCARA DE ESQUÍ' },
+  { id:'parche',  name:'PARCHE PIRATA' },
+  { id:'monoculo',name:'MONÓCULO' },
+  { id:'antifaz', name:'ANTIFAZ' }
+];
+const VELLO = [
+  { id:'none',    name:'AFEITADO' },
+  { id:'sombra',  name:'SOMBRA' },
+  { id:'bigote',  name:'BIGOTE' },
+  { id:'morsa',   name:'BIGOTE DE MORSA' },
+  { id:'perilla', name:'PERILLA' },
+  { id:'candado', name:'CANDADO' },
+  { id:'barba',   name:'BARBA CERRADA' },
+  { id:'chivo',   name:'CHIVO' },
+  { id:'patillas',name:'PATILLAS' }
+];
+const ACC_COLS = ['#c8352b','#1f4e8c','#20603a','#e0a621','#7a2f8f','#1a1a1e','#e8e6df','#d2601a','#2aa3a3','#c94f86'];
+
+/* --- cejas y ojos segun la expresion --- */
+function drawOjos(c, o, cx, eyeY, eyeDX, eyeR, colCeja) {
+  const cara = (o.face && CARAS[o.face]) ? CARAS[o.face].id
+             : (o.angry ? 'enfadado' : (o.shout ? 'grito' : 'normal'));
+  colCeja = shade(colCeja, 0.74);                     /* algo mas oscuro que el pelo */
+  const BAJA = eyeR*0.62;                             /* las cejas quedaban bajo el flequillo */
+  const ceja = (lado, y, ang, largo) => {
+    y += BAJA;
+    c.save();
+    c.translate(cx + lado*eyeDX, eyeY + y);
+    c.rotate(lado*ang);
+    c.fillStyle = colCeja;
+    c.fillRect(-eyeR*(largo||1), -eyeR*0.25, eyeR*2*(largo||1), eyeR*0.5);
+    c.restore();
+  };
+  const blancos = (rx, ry) => {
+    ellipse(c, cx-eyeDX, eyeY, rx, ry, '#f7f7f2');
+    ellipse(c, cx+eyeDX, eyeY, rx, ry, '#f7f7f2');
+  };
+  const pupilas = (r, dx, dy) => {
+    const col = o.redEyes ? '#e02020' : '#141414';
+    ellipse(c, cx-eyeDX+(dx||0), eyeY+(dy||0), r, r, col);
+    ellipse(c, cx+eyeDX+(dx||0), eyeY+(dy||0), r, r, col);
+  };
+  switch (cara) {
+    case 'enfadado':
+      ceja(-1, -eyeR*1.5, -0.42); ceja(1, -eyeR*1.5, -0.42);
+      blancos(eyeR, eyeR*0.72); pupilas(eyeR*0.44, eyeR*0.15, 0);
+      break;
+    case 'malvado':
+      ceja(-1, -eyeR*1.45, -0.55); ceja(1, -eyeR*1.45, -0.55);
+      blancos(eyeR, eyeR*0.55); pupilas(eyeR*0.40, eyeR*0.18, -eyeR*0.05);
+      break;
+    case 'triste':
+      ceja(-1, -eyeR*1.6, 0.46); ceja(1, -eyeR*1.6, 0.46);
+      blancos(eyeR, eyeR*0.86); pupilas(eyeR*0.44, 0, eyeR*0.12);
+      break;
+    case 'sorpresa':
+      ceja(-1, -eyeR*2.2, 0.06); ceja(1, -eyeR*2.2, 0.06);
+      blancos(eyeR*1.16, eyeR*1.10); pupilas(eyeR*0.36, 0, 0);
+      break;
+    case 'cansado':
+      ceja(-1, -eyeR*1.75, 0.28); ceja(1, -eyeR*1.75, 0.28);
+      blancos(eyeR, eyeR*0.80);
+      pupilas(eyeR*0.40, 0, eyeR*0.10);
+      c.fillStyle = o.skin ? shade(o.skin, 0.80) : 'rgba(0,0,0,0.30)';   /* parpados caidos */
+      c.fillRect(cx-eyeDX-eyeR, eyeY-eyeR*0.86, eyeR*2, eyeR*0.72);
+      c.fillRect(cx+eyeDX-eyeR, eyeY-eyeR*0.86, eyeR*2, eyeR*0.72);
+      c.fillStyle = 'rgba(60,40,70,0.28)';                                /* ojeras */
+      c.fillRect(cx-eyeDX-eyeR*0.9, eyeY+eyeR*0.62, eyeR*1.8, eyeR*0.34);
+      c.fillRect(cx+eyeDX-eyeR*0.9, eyeY+eyeR*0.62, eyeR*1.8, eyeR*0.34);
+      break;
+    case 'chulo':
+      ceja(-1, -eyeR*1.35, -0.10); ceja(1, -eyeR*2.05, -0.30, 0.85);
+      blancos(eyeR, eyeR*0.72); pupilas(eyeR*0.42, eyeR*0.20, 0);
+      break;
+    case 'guino':
+      ceja(-1, -eyeR*1.7, -0.05); ceja(1, -eyeR*1.5, -0.30);
+      ellipse(c, cx-eyeDX, eyeY, eyeR, eyeR*0.82, '#f7f7f2');
+      ellipse(c, cx-eyeDX+eyeR*0.15, eyeY, eyeR*0.42, eyeR*0.42, o.redEyes?'#e02020':'#141414');
+      c.fillStyle = colCeja;                                              /* el otro, cerrado */
+      c.fillRect(cx+eyeDX-eyeR, eyeY-eyeR*0.16, eyeR*2, eyeR*0.32);
+      break;
+    case 'poker':
+      ceja(-1, -eyeR*1.9, 0); ceja(1, -eyeR*1.9, 0);
+      blancos(eyeR, eyeR*0.50); pupilas(eyeR*0.34, 0, 0);
+      break;
+    case 'risa':
+      ceja(-1, -eyeR*2.0, 0.10); ceja(1, -eyeR*2.0, 0.10);
+      c.strokeStyle = colCeja; c.lineWidth = Math.max(1, eyeR*0.34);      /* ojos en arco */
+      c.lineCap = 'round';
+      for (const l of [-1, 1]) {
+        c.beginPath();
+        c.arc(cx + l*eyeDX, eyeY + eyeR*0.35, eyeR*0.82, Math.PI*1.12, Math.PI*1.88);
+        c.stroke();
+      }
+      c.lineCap = 'butt';
+      break;
+    case 'grito':
+      ceja(-1, -eyeR*1.55, -0.34); ceja(1, -eyeR*1.55, -0.34);
+      blancos(eyeR*1.06, eyeR*0.92); pupilas(eyeR*0.38, 0, 0);
+      break;
+    case 'sonrisa':
+      ceja(-1, -eyeR*1.95, 0.08); ceja(1, -eyeR*1.95, 0.08);
+      blancos(eyeR, eyeR*0.82); pupilas(eyeR*0.42, eyeR*0.10, 0);
+      break;
+    default:
+      ceja(-1, -eyeR*1.9, 0); ceja(1, -eyeR*1.9, 0);
+      blancos(eyeR, eyeR*0.82); pupilas(eyeR*0.42, eyeR*0.15, 0);
+  }
+}
+/* --- boca segun la expresion --- */
+function drawBoca(c, o, cx, eyeY, headRX, headRY, bajo, skin) {
+  const cara = (o.face && CARAS[o.face]) ? CARAS[o.face].id
+             : (o.shout ? 'grito' : (o.smile ? 'risa' : 'normal'));
+  const by = eyeY + headRY*0.52*bajo;
+  switch (cara) {
+    case 'sonrisa':
+      c.strokeStyle = '#5a1f1f'; c.lineWidth = Math.max(1.6, headRX*0.075); c.lineCap = 'round';
+      c.beginPath();
+      c.arc(cx, by - headRY*0.10, headRX*0.34, 0.30, Math.PI-0.30);
+      c.stroke(); c.lineCap = 'butt';
+      break;
+    case 'risa':
+      c.fillStyle = '#3a1414';
+      c.beginPath(); c.ellipse(cx, by-headRY*0.02, headRX*0.36, headRY*0.19*bajo, 0, 0, Math.PI); c.fill();
+      c.fillStyle = '#f4f2ea';
+      c.fillRect(cx-headRX*0.32, by-headRY*0.02, headRX*0.64, headRY*0.07);
+      c.fillStyle = '#c05a5a';                                            /* lengua */
+      c.beginPath(); c.ellipse(cx, by+headRY*0.13*bajo, headRX*0.16, headRY*0.06*bajo, 0, 0, Math.PI); c.fill();
+      break;
+    case 'grito':
+      ellipse(c, cx, by + headRY*0.03*bajo, headRX*0.24, headRY*0.22*bajo, '#5a1f1f');
+      c.fillStyle = '#f4f2ea';
+      c.fillRect(cx-headRX*0.20, by-headRY*0.16*bajo, headRX*0.40, headRY*0.06);
+      break;
+    case 'sorpresa':
+      ellipse(c, cx, by, headRX*0.16, headRY*0.16*bajo, '#5a1f1f');
+      break;
+    case 'triste':
+      c.strokeStyle = '#5a1f1f'; c.lineWidth = Math.max(1.6, headRX*0.07); c.lineCap = 'round';
+      c.beginPath();
+      c.arc(cx, by + headRY*0.16, headRX*0.32, Math.PI+0.34, TAU-0.34);
+      c.stroke(); c.lineCap = 'butt';
+      break;
+    case 'chulo':
+    case 'malvado':
+      c.strokeStyle = '#5a1f1f'; c.lineWidth = Math.max(1.6, headRX*0.07); c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(cx-headRX*0.30, by+headRY*0.03);
+      c.quadraticCurveTo(cx+headRX*0.06, by+headRY*0.10, cx+headRX*0.32, by-headRY*0.09);
+      c.stroke(); c.lineCap = 'butt';
+      if (cara === 'malvado') {                                           /* colmillo */
+        c.fillStyle = '#f4f2ea';
+        c.beginPath();
+        c.moveTo(cx+headRX*0.14, by+headRY*0.02);
+        c.lineTo(cx+headRX*0.22, by+headRY*0.02);
+        c.lineTo(cx+headRX*0.18, by+headRY*0.13); c.closePath(); c.fill();
+      }
+      break;
+    case 'cansado':
+      c.fillStyle = '#5a1f1f';
+      c.fillRect(cx-headRX*0.20, by, headRX*0.40, headRY*0.05);
+      break;
+    case 'poker':
+      c.fillStyle = '#5a1f1f';
+      c.fillRect(cx-headRX*0.30, by, headRX*0.60, headRY*0.045);
+      break;
+    default:
+      c.fillStyle = '#5a1f1f';
+      c.fillRect(cx-headRX*0.26, by, headRX*0.52, headRY*0.07);
+  }
+}
+/* --- vello facial elegible --- */
+function drawVello(c, idx, cx, headCY, headRX, headRY, eyeY, bajo, col, skin) {
+  const id = (VELLO[idx] || VELLO[0]).id;
+  if (id === 'none') return;
+  const bc = col;
+  const recorta = (fn) => {                                             /* nada sale de la cara */
+    c.save();
+    c.beginPath(); c.ellipse(cx, headCY, headRX, headRY, 0, 0, TAU); c.clip();
+    fn(); c.restore();
+  };
+  const bigote = (ancho, alto) => {
+    c.fillStyle = bc;
+    c.beginPath();
+    c.ellipse(cx, eyeY+headRY*0.42*bajo, headRX*ancho, headRY*alto*bajo, 0, Math.PI, TAU);
+    c.fill();
+    c.fillRect(cx-headRX*ancho, eyeY+headRY*0.41*bajo, headRX*ancho*2, headRY*alto*0.7);
+  };
+  const mandibula = (rx, ry) => recorta(() => {
+    c.fillStyle = bc;
+    c.beginPath();
+    c.ellipse(cx, eyeY+headRY*0.30*bajo, headRX*rx, headRY*ry*bajo, 0, 0, Math.PI);
+    c.fill();
+    c.fillRect(cx-headRX*rx, eyeY+headRY*0.30*bajo, headRX*(rx-0.56), headRY*0.60*bajo);
+    c.fillRect(cx+headRX*0.56, eyeY+headRY*0.30*bajo, headRX*(rx-0.56), headRY*0.60*bajo);
+  });
+  switch (id) {
+    case 'sombra':
+      recorta(() => {
+        c.fillStyle = 'rgba(30,24,20,0.30)';
+        c.beginPath();
+        c.ellipse(cx, eyeY+headRY*0.42*bajo, headRX*0.74, headRY*0.54*bajo, 0, 0, Math.PI);
+        c.fill();
+      });
+      break;
+    case 'bigote': bigote(0.30, 0.075); break;
+    case 'morsa':
+      c.fillStyle = bc;
+      c.beginPath();
+      c.ellipse(cx, eyeY+headRY*0.44*bajo, headRX*0.46, headRY*0.13*bajo, 0, Math.PI, TAU);
+      c.fill();
+      c.beginPath();                                                    /* puntas caidas */
+      c.ellipse(cx-headRX*0.40, eyeY+headRY*0.50*bajo, headRX*0.12, headRY*0.13*bajo, 0, 0, TAU);
+      c.ellipse(cx+headRX*0.40, eyeY+headRY*0.50*bajo, headRX*0.12, headRY*0.13*bajo, 0, 0, TAU);
+      c.fill();
+      break;
+    case 'perilla':
+      bigote(0.28, 0.065);
+      recorta(() => {
+        c.fillStyle = bc;
+        c.beginPath();                                 /* mota bajo el labio */
+        c.ellipse(cx, eyeY+headRY*0.72*bajo, headRX*0.13, headRY*0.11*bajo, 0, 0, TAU);
+        c.fill();
+      });
+      break;
+    case 'candado':
+      bigote(0.30, 0.07);
+      recorta(() => {                                                   /* linea que rodea la boca */
+        c.strokeStyle = bc; c.lineWidth = Math.max(1.6, headRX*0.10);
+        c.beginPath();
+        c.moveTo(cx-headRX*0.30, eyeY+headRY*0.44*bajo);
+        c.quadraticCurveTo(cx-headRX*0.32, eyeY+headRY*0.76*bajo, cx, eyeY+headRY*0.78*bajo);
+        c.quadraticCurveTo(cx+headRX*0.32, eyeY+headRY*0.76*bajo, cx+headRX*0.30, eyeY+headRY*0.44*bajo);
+        c.stroke();
+      });
+      break;
+    case 'chivo':
+      recorta(() => {
+        c.fillStyle = bc;
+        c.beginPath();                                 /* perilla ancha bajo el labio */
+        c.moveTo(cx-headRX*0.26, eyeY+headRY*0.62*bajo);
+        c.quadraticCurveTo(cx, eyeY+headRY*0.58*bajo, cx+headRX*0.26, eyeY+headRY*0.62*bajo);
+        c.quadraticCurveTo(cx+headRX*0.20, eyeY+headRY*0.90*bajo, cx, eyeY+headRY*0.92*bajo);
+        c.quadraticCurveTo(cx-headRX*0.20, eyeY+headRY*0.90*bajo, cx-headRX*0.26, eyeY+headRY*0.62*bajo);
+        c.closePath(); c.fill();
+      });
+      break;
+    case 'patillas':
+      recorta(() => {
+        c.fillStyle = bc;
+        for (const l of [-1, 1]) {
+          c.beginPath();
+          c.moveTo(cx + l*headRX*0.99, headCY-headRY*0.26);
+          c.lineTo(cx + l*headRX*0.84, headCY-headRY*0.22);
+          c.lineTo(cx + l*headRX*0.86, eyeY+headRY*0.34*bajo);
+          c.lineTo(cx + l*headRX*0.99, eyeY+headRY*0.26*bajo);
+          c.closePath(); c.fill();
+        }
+      });
+      break;
+    case 'barba':
+      mandibula(0.90, 0.86);
+      bigote(0.40, 0.11);
+      ellipse(c, cx, eyeY+headRY*0.545*bajo, headRX*0.24, headRY*0.055*bajo, skin);
+      break;
+  }
+}
+/* --- gafas, visores y demas --- */
+function drawGafas(c, idx, cx, headCY, headRX, headRY, eyeY, eyeDX, eyeR, col) {
+  const id = (GAFAS[idx] || GAFAS[0]).id;
+  if (id === 'none') return;
+  const gw = eyeR*2.4, gh = eyeR*2.0;
+  const patillas = (yoff) => {
+    c.beginPath();
+    c.moveTo(cx-eyeDX-gw/2, eyeY+yoff); c.lineTo(cx-headRX, eyeY-gh*0.2+yoff);
+    c.moveTo(cx+eyeDX+gw/2, eyeY+yoff); c.lineTo(cx+headRX, eyeY-gh*0.2+yoff);
+    c.stroke();
+  };
+  switch (id) {
+    case 'pasta':
+      c.strokeStyle = col || '#141414'; c.lineWidth = Math.max(1, headRX*0.09);
+      c.fillStyle = 'rgba(190,225,255,0.30)';
+      c.fillRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.fillRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
+      c.strokeRect(cx-eyeDX-gw/2, eyeY-gh/2, gw, gh); c.strokeRect(cx+eyeDX-gw/2, eyeY-gh/2, gw, gh);
+      c.beginPath(); c.moveTo(cx-eyeDX+gw/2, eyeY); c.lineTo(cx+eyeDX-gw/2, eyeY); c.stroke();
+      patillas(0);
+      break;
+    case 'finas':
+      c.strokeStyle = col || '#b9bec6'; c.lineWidth = Math.max(1, headRX*0.035);
+      for (const l of [-1, 1]) {
+        c.beginPath(); c.ellipse(cx + l*eyeDX, eyeY, gw*0.50, gh*0.56, 0, 0, TAU); c.stroke();
+      }
+      c.beginPath(); c.moveTo(cx-eyeDX+gw*0.50, eyeY); c.lineTo(cx+eyeDX-gw*0.50, eyeY); c.stroke();
+      patillas(0);
+      break;
+    case 'sol': {
+      const base = col || '#16181c';
+      c.fillStyle = base;
+      c.fillRect(cx-eyeDX, eyeY-gh*0.20, eyeDX*2, gh*0.20);              /* puente */
+      for (const l of [-1, 1]) {                                          /* cristales caidos */
+        c.save();
+        c.translate(cx + l*eyeDX, eyeY);
+        c.rotate(l*0.10);
+        roundRect(c, -gw*0.62, -gh*0.50, gw*1.24, gh*1.00, gh*0.34, base);
+        c.fillStyle = 'rgba(255,255,255,0.28)';
+        c.beginPath();
+        c.moveTo(-gw*0.48, gh*0.34); c.lineTo(-gw*0.02, -gh*0.38);
+        c.lineTo(gw*0.20, -gh*0.38); c.lineTo(-gw*0.26, gh*0.34);
+        c.closePath(); c.fill();
+        c.restore();
+      }
+      c.strokeStyle = shade(base, 0.7); c.lineWidth = Math.max(1, headRX*0.045); patillas(-gh*0.10);
+      break;
+    }
+    case 'visor': {
+      const base = col || '#1d2a3a';
+      c.fillStyle = shade(base, 0.55);                                   /* montura */
+      c.beginPath();
+      c.moveTo(cx-headRX*1.00, eyeY-gh*0.46);
+      c.quadraticCurveTo(cx, eyeY-gh*0.84, cx+headRX*1.00, eyeY-gh*0.46);
+      c.quadraticCurveTo(cx+headRX*0.92, eyeY+gh*0.48, cx, eyeY+gh*0.44);
+      c.quadraticCurveTo(cx-headRX*0.92, eyeY+gh*0.48, cx-headRX*1.00, eyeY-gh*0.46);
+      c.closePath(); c.fill();
+      c.fillStyle = base;                                                /* cristal */
+      c.beginPath();
+      c.moveTo(cx-headRX*0.88, eyeY-gh*0.36);
+      c.quadraticCurveTo(cx, eyeY-gh*0.68, cx+headRX*0.88, eyeY-gh*0.36);
+      c.quadraticCurveTo(cx+headRX*0.80, eyeY+gh*0.34, cx, eyeY+gh*0.30);
+      c.quadraticCurveTo(cx-headRX*0.80, eyeY+gh*0.34, cx-headRX*0.88, eyeY-gh*0.36);
+      c.closePath(); c.fill();
+      c.fillStyle = 'rgba(255,255,255,0.26)';                            /* brillo diagonal */
+      c.beginPath();
+      c.moveTo(cx-headRX*0.72, eyeY+gh*0.16); c.lineTo(cx-headRX*0.16, eyeY-gh*0.50);
+      c.lineTo(cx+headRX*0.04, eyeY-gh*0.50); c.lineTo(cx-headRX*0.50, eyeY+gh*0.22);
+      c.closePath(); c.fill();
+      break;
+    }
+    case 'esqui':
+      roundRect(c, cx-headRX*0.98, eyeY-gh*0.62, headRX*1.96, gh*1.18, gh*0.36, '#2a2d33');
+      roundRect(c, cx-headRX*0.84, eyeY-gh*0.48, headRX*1.68, gh*0.90, gh*0.30, col || '#d8a83a');
+      c.fillStyle = 'rgba(255,255,255,0.28)';
+      c.fillRect(cx-headRX*0.74, eyeY-gh*0.38, headRX*0.60, gh*0.28);
+      c.fillStyle = '#2a2d33';                                           /* cinta */
+      c.fillRect(cx-headRX*1.06, eyeY-gh*0.26, headRX*0.12, gh*0.44);
+      c.fillRect(cx+headRX*0.94, eyeY-gh*0.26, headRX*0.12, gh*0.44);
+      break;
+    case 'parche':
+      c.fillStyle = '#14161a';
+      roundRect(c, cx+eyeDX-gw*0.52, eyeY-gh*0.44, gw*1.04, gh*0.88, gh*0.26, '#14161a');
+      c.strokeStyle = '#14161a'; c.lineWidth = Math.max(1, headRX*0.05);
+      c.beginPath();
+      c.moveTo(cx+eyeDX-gw*0.52, eyeY-gh*0.30); c.lineTo(cx-headRX*0.98, eyeY-gh*0.62);
+      c.moveTo(cx+eyeDX+gw*0.52, eyeY-gh*0.24); c.lineTo(cx+headRX*1.0, eyeY-gh*0.52);
+      c.stroke();
+      break;
+    case 'monoculo':
+      c.strokeStyle = col || '#d8b24a'; c.lineWidth = Math.max(1.4, headRX*0.055);
+      c.beginPath(); c.ellipse(cx+eyeDX, eyeY, gw*0.54, gw*0.54, 0, 0, TAU); c.stroke();
+      c.fillStyle = 'rgba(200,230,255,0.22)';
+      c.beginPath(); c.ellipse(cx+eyeDX, eyeY, gw*0.52, gw*0.52, 0, 0, TAU); c.fill();
+      c.strokeStyle = '#c8b48a'; c.lineWidth = Math.max(1, headRX*0.028);
+      c.beginPath();
+      c.moveTo(cx+eyeDX+gw*0.30, eyeY+gw*0.44);
+      c.quadraticCurveTo(cx+headRX*0.70, eyeY+headRY*0.60, cx+headRX*0.30, eyeY+headRY*0.80);
+      c.stroke();
+      break;
+    case 'antifaz':
+      c.fillStyle = col || '#14161a';
+      c.beginPath();
+      c.moveTo(cx-headRX*0.94, eyeY-eyeR*1.60);
+      c.lineTo(cx+headRX*0.94, eyeY-eyeR*1.60);
+      c.lineTo(cx+headRX*0.88, eyeY+eyeR*1.25);
+      c.quadraticCurveTo(cx, eyeY+eyeR*0.25, cx-headRX*0.88, eyeY+eyeR*1.25);
+      c.closePath();
+      for (const l of [-1, 1]) {                                         /* huecos calados */
+        c.moveTo(cx + l*eyeDX + eyeR*1.12, eyeY);
+        c.ellipse(cx + l*eyeDX, eyeY, eyeR*1.12, eyeR*0.86, 0, 0, TAU, true);
+      }
+      c.fill('evenodd');
+      break;
+  }
+}
+/* --- gorras y demas cosas de la cabeza --- */
+function drawGorro(c, idx, cx, headCY, headRX, headRY, col, colPelo, cabecera) {
+  const id = (GORROS[idx] || GORROS[0]).id;
+  if (id === 'none') return;
+  const top = headCY - headRY;                        /* coronilla */
+  const c1 = col || '#c8352b', c2 = shade(c1, 0.72), c3 = shade(c1, 1.22);
+  const sube = (v) => Math.max(v, -(cabecera || 0) + 3);   /* sin salirse del lienzo */
+  switch (id) {
+    case 'gorra':
+    case 'gorraatras': {
+      const alto = headRY*0.72;
+      c.fillStyle = c1;                                /* copa */
+      c.beginPath();
+      c.ellipse(cx, top + alto*0.62, headRX*1.04, alto, 0, Math.PI, TAU);
+      c.fill();
+      c.fillRect(cx-headRX*1.04, top + alto*0.56, headRX*2.08, alto*0.16);
+      const lado = (id === 'gorra') ? 1 : -1;          /* visera delante o detras */
+      c.fillStyle = c2;
+      c.beginPath();
+      c.ellipse(cx + lado*headRX*0.55, top + alto*0.70, headRX*0.95, alto*0.30, lado*0.08, 0, Math.PI);
+      c.fill();
+      c.fillStyle = c3;                                /* boton de la copa */
+      ellipse(c, cx, top + alto*0.62 - alto*0.86, headRX*0.09, headRY*0.05, c3);
+      if (id === 'gorraatras') {                       /* cierre trasero visible */
+        c.fillStyle = '#f0f0ee';
+        c.fillRect(cx-headRX*0.26, top+alto*0.44, headRX*0.52, alto*0.16);
+      }
+      break;
+    }
+    case 'beanie': {
+      const alto = headRY*0.80;
+      const arriba = sube(top - alto*0.42);
+      c.fillStyle = c3;                                /* pompon, detras de la copa */
+      ellipse(c, cx, arriba, headRX*0.26, headRY*0.20, c3);
+      c.fillStyle = shade(c3, 0.80);
+      ellipse(c, cx-headRX*0.07, arriba+headRY*0.04, headRX*0.11, headRY*0.08, shade(c3, 0.80));
+      c.fillStyle = c1;
+      c.beginPath(); c.ellipse(cx, top + alto*0.52, headRX*1.02, alto, 0, Math.PI, TAU); c.fill();
+      c.fillStyle = c2;                                /* vuelta de abajo */
+      roundRect(c, cx-headRX*1.08, top + alto*0.42, headRX*2.16, alto*0.40, headRY*0.06, c2);
+      c.fillStyle = shade(c2, 1.15);                   /* punto del tejido */
+      for (let i=-3;i<=3;i++)
+        c.fillRect(cx + i*headRX*0.28 - headRX*0.03, top + alto*0.44, headRX*0.06, alto*0.36);
+      break;
+    }
+    case 'bandana':
+      c.fillStyle = c1;
+      c.beginPath(); c.ellipse(cx, headCY-headRY*0.34, headRX*1.03, headRY*0.56, 0, Math.PI, TAU); c.fill();
+      c.fillRect(cx-headRX*1.03, headCY-headRY*0.40, headRX*2.06, headRY*0.30);
+      c.fillStyle = c2;                                /* nudo y cola */
+      c.beginPath();
+      c.moveTo(cx-headRX*0.98, headCY-headRY*0.16);
+      c.lineTo(cx-headRX*1.42, headCY+headRY*0.28);
+      c.lineTo(cx-headRX*1.20, headCY+headRY*0.34);
+      c.lineTo(cx-headRX*0.92, headCY+headRY*0.02);
+      c.closePath(); c.fill();
+      break;
+    case 'cinta':
+      c.fillStyle = c1;
+      c.fillRect(cx-headRX*1.02, headCY-headRY*0.62, headRX*2.04, headRY*0.24);
+      c.fillStyle = c3;
+      c.fillRect(cx-headRX*1.02, headCY-headRY*0.56, headRX*2.04, headRY*0.06);
+      break;
+    case 'boina':
+      c.fillStyle = c1;
+      c.beginPath();
+      c.ellipse(cx-headRX*0.12, headCY-headRY*0.62, headRX*1.14, headRY*0.42, -0.12, 0, TAU);
+      c.fill();
+      c.fillStyle = c2;
+      c.fillRect(cx-headRX*0.96, headCY-headRY*0.58, headRX*1.92, headRY*0.12);
+      c.fillStyle = c3;
+      ellipse(c, cx-headRX*0.10, sube(headCY-headRY*0.96), headRX*0.08, headRY*0.06, c3);
+      break;
+    case 'casco': {
+      const base = col || '#e8b21e';
+      const alto = headRY*0.72;
+      c.fillStyle = base;                              /* casquete */
+      c.beginPath(); c.ellipse(cx, top + alto*0.70, headRX*1.00, alto, 0, Math.PI, TAU); c.fill();
+      c.fillStyle = shade(base, 1.20);                 /* cresta central */
+      c.beginPath();
+      c.ellipse(cx, top + alto*0.70, headRX*0.13, alto*1.02, 0, Math.PI, TAU); c.fill();
+      c.fillStyle = shade(base, 0.72);                 /* ala, por delante de todo */
+      c.beginPath();
+      c.ellipse(cx, top + alto*0.76, headRX*1.34, alto*0.20, 0, 0, TAU); c.fill();
+      c.fillStyle = shade(base, 0.52);
+      c.fillRect(cx-headRX*1.34, top + alto*0.76, headRX*2.68, alto*0.05);
+      break;
+    }
+    case 'cascos':
+      c.fillStyle = '#22262c';                         /* diadema */
+      c.lineWidth = 0;
+      c.beginPath(); c.ellipse(cx, headCY-headRY*0.42, headRX*1.06, headRY*0.72, 0, Math.PI, TAU); c.fill();
+      c.fillStyle = '#0e1013';
+      c.beginPath(); c.ellipse(cx, headCY-headRY*0.42, headRX*0.86, headRY*0.52, 0, Math.PI, TAU); c.fill();
+      for (const l of [-1, 1]) {                       /* almohadillas */
+        roundRect(c, cx + l*headRX*1.16 - headRX*0.20, headCY-headRY*0.34,
+                  headRX*0.40, headRY*0.70, headRX*0.16, '#2a2f36');
+        roundRect(c, cx + l*headRX*1.16 - headRX*0.12, headCY-headRY*0.26,
+                  headRX*0.24, headRY*0.54, headRX*0.10, c1);
+      }
+      break;
+    case 'capucha': {
+      /* la capucha es un anillo: por fuera la tela y por dentro un hueco
+         algo mayor que la cara, para que se siga viendo la cara entera */
+      const ext = () => {
+        c.moveTo(cx-headRX*1.34, headCY+headRY*0.92);
+        c.lineTo(cx-headRX*1.34, headCY-headRY*0.10);
+        c.quadraticCurveTo(cx-headRX*1.30, headCY-headRY*1.28, cx, headCY-headRY*1.30);
+        c.quadraticCurveTo(cx+headRX*1.30, headCY-headRY*1.28, cx+headRX*1.34, headCY-headRY*0.10);
+        c.lineTo(cx+headRX*1.34, headCY+headRY*0.92);
+        c.closePath();
+      };
+      const hueco = (rx, ry, dy, sentido) => {
+        c.moveTo(cx + rx, headCY + dy);
+        c.ellipse(cx, headCY + dy, rx, ry, 0, 0, TAU, sentido);
+      };
+      c.fillStyle = c2;                                /* tela */
+      c.beginPath(); ext(); hueco(headRX*1.06, headRY*1.08, headRY*0.04, true);
+      c.fill('evenodd');
+      c.fillStyle = 'rgba(0,0,0,0.45)';                /* sombra del interior */
+      c.beginPath();
+      hueco(headRX*1.06, headRY*1.08, headRY*0.04, false);
+      hueco(headRX*0.99, headRY*1.00, headRY*0.06, true);
+      c.fill('evenodd');
+      c.fillStyle = c1;                                /* reborde vuelto de arriba */
+      c.beginPath();
+      c.ellipse(cx, headCY-headRY*0.04, headRX*1.22, headRY*1.20, 0, Math.PI*1.04, Math.PI*1.96);
+      c.ellipse(cx, headCY+headRY*0.02, headRX*1.06, headRY*1.06, 0, Math.PI*1.96, Math.PI*1.04, true);
+      c.fill('evenodd');
+      break;
+    }
+    case 'birrete': {
+      const ty = sube(headCY-headRY*1.02);
+      c.fillStyle = '#20202a';                          /* casquete */
+      c.beginPath();
+      c.ellipse(cx, headCY-headRY*0.56, headRX*0.94, headRY*0.46, 0, Math.PI, TAU); c.fill();
+      c.fillRect(cx-headRX*0.94, headCY-headRY*0.60, headRX*1.88, headRY*0.14);
+      c.fillStyle = '#12121a';                          /* tabla */
+      c.beginPath();
+      c.moveTo(cx-headRX*1.30, ty+headRY*0.06);
+      c.lineTo(cx, ty-headRY*0.10);
+      c.lineTo(cx+headRX*1.30, ty+headRY*0.06);
+      c.lineTo(cx, ty+headRY*0.22);
+      c.closePath(); c.fill();
+      c.fillStyle = '#2a2a36';
+      c.beginPath();
+      c.moveTo(cx-headRX*1.30, ty+headRY*0.06);
+      c.lineTo(cx, ty+headRY*0.22);
+      c.lineTo(cx+headRX*1.30, ty+headRY*0.06);
+      c.lineTo(cx+headRX*1.30, ty+headRY*0.12);
+      c.lineTo(cx, ty+headRY*0.28);
+      c.lineTo(cx-headRX*1.30, ty+headRY*0.12);
+      c.closePath(); c.fill();
+      c.strokeStyle = c1; c.lineWidth = Math.max(1.4, headRX*0.07);   /* borla */
+      c.beginPath();
+      c.moveTo(cx, ty+headRY*0.06);
+      c.quadraticCurveTo(cx+headRX*1.00, ty+headRY*0.02, cx+headRX*1.10, headCY-headRY*0.24);
+      c.stroke();
+      ellipse(c, cx+headRX*1.10, headCY-headRY*0.14, headRX*0.11, headRY*0.12, c1);
+      break;
+    }
+    case 'corona': {
+      const oro = col || '#e8c33a';
+      const p1 = sube(headCY-headRY*1.40), p2 = sube(headCY-headRY*1.52);
+      c.fillStyle = oro;
+      c.beginPath();
+      c.moveTo(cx-headRX*0.92, headCY-headRY*0.50);
+      c.lineTo(cx-headRX*0.92, p1);
+      c.lineTo(cx-headRX*0.46, headCY-headRY*0.86);
+      c.lineTo(cx, p2);
+      c.lineTo(cx+headRX*0.46, headCY-headRY*0.86);
+      c.lineTo(cx+headRX*0.92, p1);
+      c.lineTo(cx+headRX*0.92, headCY-headRY*0.50);
+      c.closePath(); c.fill();
+      c.fillStyle = shade(oro, 0.72);                   /* aro de la base */
+      c.fillRect(cx-headRX*0.94, headCY-headRY*0.62, headRX*1.88, headRY*0.18);
+      c.fillStyle = shade(oro, 1.25);
+      c.fillRect(cx-headRX*0.94, headCY-headRY*0.60, headRX*1.88, headRY*0.05);
+      for (const [px, py, cl] of [[0, p2, '#d0332f'], [-headRX*0.92, p1, '#2f6fd0'],
+                                  [headRX*0.92, p1, '#2f9a5a']])
+        ellipse(c, cx+px, py+headRY*0.12, headRX*0.09, headRY*0.09, cl);
+      break;
+    }
+    case 'cuernos':
+      c.fillStyle = col || '#b83030';
+      for (const l of [-1, 1]) {
+        c.beginPath();
+        c.moveTo(cx + l*headRX*0.52, headCY-headRY*0.62);
+        c.quadraticCurveTo(cx + l*headRX*0.98, headCY-headRY*0.92,
+                           cx + l*headRX*0.86, sube(headCY-headRY*1.24));
+        c.quadraticCurveTo(cx + l*headRX*0.66, headCY-headRY*0.90,
+                           cx + l*headRX*0.30, headCY-headRY*0.60);
+        c.closePath(); c.fill();
+      }
+      break;
+    case 'halo': {
+      const hy = sube(headCY-headRY*1.42);
+      c.strokeStyle = 'rgba(255,236,150,0.28)'; c.lineWidth = Math.max(3, headRX*0.30);
+      c.beginPath(); c.ellipse(cx, hy, headRX*0.66, headRY*0.15, 0, 0, TAU); c.stroke();
+      c.strokeStyle = col || '#ffe15c'; c.lineWidth = Math.max(1.6, headRX*0.10);
+      c.beginPath(); c.ellipse(cx, hy, headRX*0.66, headRY*0.15, 0, 0, TAU); c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = Math.max(1, headRX*0.035);
+      c.beginPath(); c.ellipse(cx, hy-headRY*0.02, headRX*0.60, headRY*0.11, 0, Math.PI, TAU); c.stroke();
+      break;
+    }
+    case 'vincha':
+      c.fillStyle = c1;
+      c.fillRect(cx-headRX*1.02, headCY-headRY*0.66, headRX*2.04, headRY*0.20);
+      c.fillStyle = shade(c1, 0.70);
+      for (let i=-2;i<=2;i++)
+        c.fillRect(cx + i*headRX*0.34 - headRX*0.05, headCY-headRY*0.66, headRX*0.10, headRY*0.20);
+      c.save();                                        /* pluma */
+      c.translate(cx-headRX*0.62, headCY-headRY*0.62);
+      c.rotate(-0.30);
+      c.fillStyle = '#e8e6df';
+      c.beginPath(); c.ellipse(0, -headRY*0.36, headRX*0.11, headRY*0.40, 0, 0, TAU); c.fill();
+      c.fillStyle = '#c8352b';
+      c.beginPath(); c.ellipse(0, -headRY*0.62, headRX*0.09, headRY*0.16, 0, 0, TAU); c.fill();
+      c.restore();
+      break;
+  }
+}
 function figure(c, W, H, o) {
   const cx = W/2;
   const headH = H*o.headRatio, headRY = headH*0.46;
@@ -1569,13 +2256,7 @@ function figure(c, W, H, o) {
     }
   }
   const eyeY = headCY+headRY*0.06, eyeDX = headRX*0.40, eyeR = headRX*0.20;
-  c.fillStyle = o.hair || '#2b2b2b';
-  c.fillRect(cx-eyeDX-eyeR, eyeY-eyeR*(o.angry?1.5:1.9), eyeR*2, eyeR*0.5);
-  c.fillRect(cx+eyeDX-eyeR, eyeY-eyeR*(o.angry?1.5:1.9), eyeR*2, eyeR*0.5);
-  ellipse(c, cx-eyeDX, eyeY, eyeR, eyeR*0.82, '#f7f7f2');
-  ellipse(c, cx+eyeDX, eyeY, eyeR, eyeR*0.82, '#f7f7f2');
-  ellipse(c, cx-eyeDX+eyeR*0.15, eyeY, eyeR*0.42, eyeR*0.42, o.redEyes?'#e02020':'#141414');
-  ellipse(c, cx+eyeDX+eyeR*0.15, eyeY, eyeR*0.42, eyeR*0.42, o.redEyes?'#e02020':'#141414');
+  drawOjos(c, o, cx, eyeY, eyeDX, eyeR, o.hair || '#2b2b2b');
   if (o.glasses) {
     c.strokeStyle = o.glassCol||'#141414';
     c.lineWidth = Math.max(1, headRX*(o.thinGlass ? 0.035 : 0.09));
@@ -1595,26 +2276,19 @@ function figure(c, W, H, o) {
     c.moveTo(cx-eyeDX-gw/2, eyeY); c.lineTo(cx-headRX, eyeY-gh*0.2);
     c.moveTo(cx+eyeDX+gw/2, eyeY); c.lineTo(cx+headRX, eyeY-gh*0.2); c.stroke();
   }
+  if (o.eyewear) drawGafas(c, o.eyewear, cx, headCY, headRX, headRY, eyeY, eyeDX, eyeR, o.accCol);
   if (!o.noJaw) {
     ellipse(c, cx, eyeY+headRY*0.26*bajo, headRX*0.11, headRY*0.10*bajo, skinD);
-    c.fillStyle = '#5a1f1f';
-    if (o.shout) ellipse(c, cx, eyeY+headRY*0.55*bajo, headRX*0.24, headRY*0.20*bajo, '#5a1f1f');
-    else c.fillRect(cx-headRX*0.26, eyeY+headRY*0.52*bajo, headRX*0.52, headRY*0.07);
+    drawBoca(c, o, cx, eyeY, headRX, headRY, bajo, skin);
   }
+  if (o.facial) drawVello(c, o.facial, cx, headCY, headRX, headRY, eyeY, bajo,
+                          o.beardCol || shade(o.hair || '#241a12', 0.88), skin);
   if (o.mustache) {                                 /* bigote justo sobre el labio */
     c.fillStyle = o.hair2 || shade(o.hair||'#2b2b2b', 0.80);
     c.beginPath();
     c.ellipse(cx, eyeY+headRY*0.44*bajo, headRX*0.32, headRY*0.075*bajo, 0, Math.PI, TAU);
     c.fill();
     c.fillRect(cx-headRX*0.32, eyeY+headRY*0.43*bajo, headRX*0.64, headRY*0.05);
-  }
-  if (o.smile) {                                    /* sonrisa ancha con dientes */
-    c.fillStyle = '#3a1414';
-    c.beginPath();
-    c.ellipse(cx, eyeY+headRY*0.50, headRX*0.34, headRY*0.16, 0, 0, Math.PI);
-    c.fill();
-    c.fillStyle = '#f4f2ea';
-    c.fillRect(cx-headRX*0.30, eyeY+headRY*0.50, headRX*0.60, headRY*0.07);
   }
   if (o.beard) {                                    /* barba corta / sombra */
     c.fillStyle = 'rgba(30,24,20,' + (o.beard === 2 ? 0.55 : 0.28) + ')';
@@ -1647,6 +2321,7 @@ function figure(c, W, H, o) {
     for (let i=0;i<3;i++){ c.beginPath(); c.moveTo(cx-headRX*0.62, headCY-headRY*(0.55-i*0.11));
       c.lineTo(cx+headRX*0.62, headCY-headRY*(0.55-i*0.11)); c.stroke(); }
   }
+  if (o.hat) drawGorro(c, o.hat, cx, headCY, headRX, headRY, o.accCol, o.hair, o.headroom || 0);
   if (o.emoji) emojiTxt(c, o.emoji, cx, bodyTop+torsoH*0.38, Math.min(W*0.40, torsoH*0.60));
   if (o.headEmoji) emojiTxt(c, o.headEmoji, cx, headH*0.12, headRX*0.85);
   /* arma en la mano derecha, girada con el brazo */
@@ -2199,11 +2874,22 @@ function spriteOf(def, state, frame, vr) {
 const PF_W = 128, PF_H = 208, PF_PX = 22, PF_PY = 50;
 const PS_W = PF_W + PF_PX*2, PS_H = PF_H + PF_PY;
 const PSX = PS_W/PF_W, PSY = PS_H/PF_H;
-function playerSprite(skin, fit, weaponKey, state, frame, down, hair, hairCol) {
+/* rasgos elegibles de un jugador, con valores por defecto seguros */
+function acc(a) {
+  a = a || {};
+  return { face: clamp(a.face|0, 0, CARAS.length-1),
+           hat: clamp(a.hat|0, 0, GORROS.length-1),
+           eyewear: clamp(a.eyewear|0, 0, GAFAS.length-1),
+           facial: clamp(a.facial|0, 0, VELLO.length-1),
+           accCol: /^#[0-9a-f]{6}$/i.test(a.accCol||'') ? a.accCol : ACC_COLS[0] };
+}
+function playerSprite(skin, fit, weaponKey, state, frame, down, hair, hairCol, rasgos) {
   const o = OUTFITS[fit] || OUTFITS[0];
   const hs = clamp((hair === undefined || hair === null) ? 0 : hair|0, 0, HAIRS.length-1);
   const hc = hairCol || '#2a1f18';
-  const key = 'P|'+skin+'|'+o.id+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0)+'|'+hs+'|'+hc;
+  const r = acc(rasgos);
+  const key = 'P|'+skin+'|'+o.id+'|'+weaponKey+'|'+state+'|'+frame+'|'+(down?1:0)+'|'+hs+'|'+hc+
+              '|'+r.face+r.hat+'_'+r.eyewear+'_'+r.facial+r.accCol;
   return sprite(key, PS_W, PS_H, (c) => {
     c.save(); c.translate(PF_PX, PF_PY);
     if (down) corpse(c,PF_W,PF_H,{shirt:o.shirt, skin:skin});
@@ -2211,6 +2897,7 @@ function playerSprite(skin, fit, weaponKey, state, frame, down, hair, hairCol) {
       headroom: PF_PY - 4,
       headRatio:0.26, shoulders:0.66, swing: state==='walk'?SWING[frame&3]:0,
       attack: state==='attack', weapon: weaponKey,
+      face:r.face, hat:r.hat, eyewear:r.eyewear, facial:r.facial, accCol:r.accCol,
       uniform: o.uniform, sleeve: 0.42, cuff: o.cuff });
     c.restore();
   });
@@ -2457,9 +3144,11 @@ function roomEnemyCount() {
 }
 
 /* ------------------------------ jugador ------------------------------ */
-function makePlayer(id, nick, skin, order, fit, hair, hairCol) {
+function makePlayer(id, nick, skin, order, fit, hair, hairCol, rasgos) {
+  const r = acc(rasgos);
   return {
     id, nick, skin, order, fit: fit|0,
+    face:r.face, hat:r.hat, eyewear:r.eyewear, facial:r.facial, accCol:r.accCol,
     slot: 0, pad: null,                                 /* ranura de mandos: 0 = teclado */
     hair: (hair === undefined || hair === null) ? 0 : (hair|0),
     hairCol: hairCol || '#2a1f18',
@@ -3953,7 +4642,8 @@ const NET = {
         const fit = (md.fit === 0 || md.fit === 1) ? md.fit : (Math.random()<0.5?0:1);
         const hair = (typeof md.hair === 'number') ? clamp(md.hair|0, 0, HAIRS.length-1) : ((Math.random()*HAIRS.length)|0);
         const hairCol = /^#[0-9a-f]{6}$/i.test(md.hairCol || '') ? md.hairCol : pick(HAIR_NAT);
-        const pl = makePlayer(id, md.nick ? String(md.nick).slice(0,16) : 'JUGADOR', skin, order, fit, hair, hairCol);
+        const pl = makePlayer(id, md.nick ? String(md.nick).slice(0,16) : 'JUGADOR', skin, order, fit, hair, hairCol,
+                              { face:md.fa, hat:md.ht, eyewear:md.ey, facial:md.ve, accCol:md.ac });
         G.players.set(id, pl);
         conn.send(JSON.stringify({ t:'welcome', you:id, host:'HOST', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }));
         this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
@@ -3981,7 +4671,9 @@ const NET = {
     this.peer.on('open', () => {
       const conn = this.peer.connect('torremar-' + code.toUpperCase(),
         { metadata:{ nick, skin: PREFS.skin || null, fit: PREFS.fit,
-                     hair: PREFS.hair, hairCol: PREFS.hairCol || null }, reliable:true });
+                     hair: PREFS.hair, hairCol: PREFS.hairCol || null,
+                     fa: PREFS.face|0, ht: PREFS.hat|0, ey: PREFS.eyewear|0,
+                     ve: PREFS.facial|0, ac: PREFS.accCol || null }, reliable:true });
       const timer = setTimeout(() => { if (!this.online) onErr('No se pudo conectar con la sala ' + code); }, 9000);
       conn.on('open', () => {
         clearTimeout(timer);
@@ -4018,6 +4710,7 @@ function serializePlayers() {
   const out = [];
   for (const p of G.players.values()) out.push({ id:p.id, nick:p.nick, skin:p.skin, fit:p.fit|0,
     hair:p.hair|0, hairCol:p.hairCol || '#2a1f18',
+    fa:p.face|0, ht:p.hat|0, ey:p.eyewear|0, ve:p.facial|0, ac:p.accCol,
     order:p.order, hp:p.hp, maxhp:p.maxhp, down:p.down });
   return out;
 }
@@ -4103,7 +4796,8 @@ function onNet(from, m) {
       if (m.up !== undefined) G.upgOn = m.up;
       G.players.clear();
       for (const s of m.players) {
-        const p = makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol);
+        const p = makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol,
+                             { face:s.fa, hat:s.ht, eyewear:s.ey, facial:s.ve, accCol:s.ac });
         p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down;
         G.players.set(s.id, p);
       }
@@ -4120,9 +4814,12 @@ function onNet(from, m) {
       const old = new Map(G.players);
       G.players.clear();
       for (const s of m.players) {
-        let p = old.get(s.id) || makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol);
+        let p = old.get(s.id) || makePlayer(s.id, s.nick, s.skin, s.order, s.fit|0, s.hair|0, s.hairCol,
+                             { face:s.fa, hat:s.ht, eyewear:s.ey, facial:s.ve, accCol:s.ac });
         p.nick = s.nick; p.skin = s.skin; p.order = s.order; p.fit = s.fit|0;
         p.hair = s.hair|0; p.hairCol = s.hairCol || p.hairCol || '#2a1f18';
+        p.face = s.fa|0; p.hat = s.ht|0; p.eyewear = s.ey|0; p.facial = s.ve|0;
+        p.accCol = s.ac || p.accCol;
         if (!p.isLocal) { p.hp = s.hp; p.maxhp = s.maxhp; p.down = s.down; }
         G.players.set(s.id, p);
       }
@@ -4140,7 +4837,9 @@ function onNet(from, m) {
         if (i === 0) {                                   /* el del teclado ya existe */
           const p0 = G.players.get(from);
           if (p0) { p0.nick = String(sl.nick||p0.nick).slice(0,16); p0.skin = sl.skin || p0.skin;
-                    p0.fit = sl.fit|0; p0.hair = sl.hair|0; p0.hairCol = sl.hairCol || p0.hairCol; }
+                    p0.fit = sl.fit|0; p0.hair = sl.hair|0; p0.hairCol = sl.hairCol || p0.hairCol;
+                    p0.face = sl.fa|0; p0.hat = sl.ht|0; p0.eyewear = sl.ey|0;
+                    p0.facial = sl.ve|0; p0.accCol = sl.ac || p0.accCol; }
           continue;
         }
         if (i >= MAX_LOCALES) continue;
@@ -4148,7 +4847,8 @@ function onNet(from, m) {
         const id = idDeRanura(from, i);
         G.players.set(id, makePlayer(id, String(sl.nick||('JUGADOR '+(i+1))).slice(0,16),
                                      sl.skin || pick(SKINS), 0, sl.fit|0, sl.hair|0,
-                                     sl.hairCol || pick(HAIR_NAT)));
+                                     sl.hairCol || pick(HAIR_NAT),
+                                     { face:sl.fa, hat:sl.ht, eyewear:sl.ey, facial:sl.ve, accCol:sl.ac }));
       }
       reordenarJugadores();
       G.nPlayers = G.players.size;
@@ -4204,7 +4904,9 @@ function onNet(from, m) {
     case 'look': {                                       /* alguien cambio su personaje */
       const p = G.players.get(m.id);
       if (p) { p.nick = m.nick || p.nick; p.skin = m.skin || p.skin; p.fit = m.fit|0;
-               p.hair = m.hair|0; p.hairCol = m.hairCol || p.hairCol; }
+               p.hair = m.hair|0; p.hairCol = m.hairCol || p.hairCol;
+               p.face = m.fa|0; p.hat = m.ht|0; p.eyewear = m.ey|0;
+               p.facial = m.ve|0; p.accCol = m.ac || p.accCol; }
       if (G.isHost) { relay(from, m); NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }); }
       if (G.state === 'menu' || G.state === 'lobby') renderLobby();
       break;
@@ -4449,7 +5151,7 @@ function collectSprites() {
     if (pl === yoCam) continue;                          /* solo se oculta el de esta pantalla */
     const wk = WEAPONS[pl.weapon] ? WEAPONS[pl.weapon].key : 'GLOCK';
     const st = pl.down ? 'dead' : (pl.anim>0 ? 'attack' : 'walk');
-    const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down, pl.hair, pl.hairCol);
+    const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down, pl.hair, pl.hairCol, pl);
     list.push({ x:pl.x, y:pl.y, tex, sx:(pl.down?0.66:0.44)*PSX, sy:(pl.down?0.24:0.72)*PSY,
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
   }
@@ -5337,7 +6039,7 @@ function renderLobby() {
        cuerpo mida lo previsto y el pelo alto siga entrando */
     cv.width = Math.round(104*esc*PSX); cv.height = Math.round(168*esc*PSY);
     cv.getContext('2d').drawImage(
-      playerSprite(p.skin, p.fit|0, 'GLOCK', 'walk', 0, false, p.hair, p.hairCol),
+      playerSprite(p.skin, p.fit|0, 'GLOCK', 'walk', 0, false, p.hair, p.hairCol, p),
       0, 0, cv.width, cv.height);
     const nk = document.createElement('div');
     nk.className = 'plabel';
@@ -5534,6 +6236,15 @@ function renderKeys() {
 let charSkin = PREFS.skin || '#e8bd93', charFit = (PREFS.fit === null ? 0 : PREFS.fit);
 let charHair = (PREFS.hair === null ? 0 : PREFS.hair);
 let charHairCol = PREFS.hairCol || '#2a1f18';
+let charFace = PREFS.face|0, charHat = PREFS.hat|0, charEyewear = PREFS.eyewear|0;
+let charFacial = PREFS.facial|0, charAccCol = PREFS.accCol || ACC_COLS[0];
+let charAccHue = 0, charTab = 0;
+const CHAR_TABS = [
+  { id:'pane-cuerpo', name:'CUERPO' },
+  { id:'pane-pelo',   name:'PELO' },
+  { id:'pane-rostro', name:'ROSTRO' },
+  { id:'pane-acc',    name:'ACCESORIOS' }
+];
 let charHue = 28;                                       /* matiz activo del selector */
 /* ---------- selector de color de pelo: matiz completo ---------- */
 function drawHairHue() {
@@ -5575,7 +6286,7 @@ function renderHomePreview() {
   pc.clearRect(0,0,pv.width,pv.height);
   const sk = PREFS.skin || charSkin, ft = (PREFS.fit === null ? charFit : PREFS.fit);
   const hr = (PREFS.hair === null ? charHair : PREFS.hair), hc = PREFS.hairCol || charHairCol;
-  pc.drawImage(playerSprite(sk, ft, 'GLOCK', 'walk', 0, false, hr, hc), 0, 0, pv.width, pv.height);
+  pc.drawImage(playerSprite(sk, ft, 'GLOCK', 'walk', 0, false, hr, hc, myAcc()), 0, 0, pv.width, pv.height);
 }
 function renderHairUI() {
   $('hair-hex').value = charHairCol;
@@ -5643,6 +6354,84 @@ function drawSkinField() {
   c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 1;
   c.strokeRect(0.5, 0.5, W-1, H-1);
 }
+/* recorte de la cabeza del sprite, para las casillas de rostro y accesorios */
+const HEAD_CROP = { x: PF_PX + PF_W*0.19, y: Math.max(0, PF_PY - 40),
+                    w: PF_W*0.62, h: PF_H*0.30 + 40 };
+function pintaCabeza(cc, W, H, extra) {
+  const tex = playerSprite(charSkin, charFit, 'GLOCK', 'walk', 0, false, charHair, charHairCol,
+    Object.assign({ face:charFace, hat:charHat, eyewear:charEyewear,
+                    facial:charFacial, accCol:charAccCol }, extra));
+  cc.imageSmoothingEnabled = true;
+  cc.drawImage(tex, HEAD_CROP.x, HEAD_CROP.y, HEAD_CROP.w, HEAD_CROP.h, 0, 0, W, H);
+}
+/* rejilla generica: una casilla por opcion con la cabeza de muestra */
+function rejillaRasgo(idEl, lista, campo, valor, poner, etiqueta) {
+  const el = $(idEl);
+  const cont = $(idEl.replace('-list', '-count'));
+  if (cont) cont.textContent = etiqueta + ' · ' + lista.length;
+  if (!el.dataset.done) {
+    lista.forEach((op, i) => {
+      const it = document.createElement('div');
+      it.className = 'hitem'; it.dataset.i = i;
+      const cv = document.createElement('canvas'); cv.width = 84; cv.height = 100;
+      const lb = document.createElement('span'); lb.textContent = op.name;
+      it.appendChild(cv); it.appendChild(lb);
+      it.onclick = () => { poner(i); renderCharUI(); };
+      el.appendChild(it);
+    });
+    el.dataset.done = '1';
+  }
+  for (const it of el.children) {
+    const i = +it.dataset.i;
+    it.classList.toggle('sel', i === valor);
+    const cv = it.firstChild, cc = cv.getContext('2d');
+    cc.clearRect(0,0,cv.width,cv.height);
+    const g = cc.createLinearGradient(0,0,0,cv.height);
+    g.addColorStop(0, i === valor ? '#4a4030' : '#33333c');
+    g.addColorStop(1, i === valor ? '#241e14' : '#1e1e25');
+    cc.fillStyle = g; cc.fillRect(0,0,cv.width,cv.height);
+    const extra = {}; extra[campo] = i;
+    pintaCabeza(cc, cv.width, cv.height, extra);
+  }
+}
+function renderCharTabs() {
+  const t = $('char-tabs');
+  t.innerHTML = '';
+  CHAR_TABS.forEach((tb, i) => {
+    const b = document.createElement('button');
+    b.textContent = tb.name;
+    b.style.cssText = 'font-size:13px;padding:6px 13px' +
+      (i === charTab ? ';border-color:#ffd45e;background:#3a2e22' : '');
+    b.onclick = () => { charTab = i; renderCharUI(); };
+    t.appendChild(b);
+  });
+  CHAR_TABS.forEach((tb, i) => $(tb.id).classList.toggle('on', i === charTab));
+}
+function drawAccHue() {
+  const cn = $('acc-hue'), c = cn.getContext('2d');
+  for (let x = 0; x < cn.width; x++) {
+    c.fillStyle = hslToHex(x/cn.width*360, 0.72, 0.52);
+    c.fillRect(x, 0, 1, cn.height);
+  }
+  const px = (charAccHue/360)*cn.width;
+  c.strokeStyle = '#fff'; c.lineWidth = 2;
+  c.strokeRect(px-2, 1, 4, cn.height-2);
+}
+function renderAccUI() {
+  $('acc-hex').value = charAccCol;
+  $('acc-dot').style.background = charAccCol;
+  drawAccHue();
+  const pl = $('acc-presets');
+  if (!pl.dataset.done) {
+    for (const col of ACC_COLS) {
+      const d = document.createElement('div');
+      d.style.cssText = 'width:26px;height:26px;border-radius:5px;border:2px solid #6b5a3c;cursor:pointer;background:'+col;
+      d.onclick = () => { charAccCol = col; charAccHue = hueOf(col); renderCharUI(); };
+      pl.appendChild(d);
+    }
+    pl.dataset.done = '1';
+  }
+}
 function renderCharUI(note) {
   $('skin-hex').value = charSkin;
   $('skin-dot').style.background = charSkin;
@@ -5667,7 +6456,9 @@ function renderCharUI(note) {
     const cv = document.createElement('canvas');
     cv.width = Math.round(80*PSX); cv.height = Math.round(128*PSY);
     cv.getContext('2d').drawImage(
-      playerSprite(charSkin, o.id, 'GLOCK', 'walk', 0, false, charHair, charHairCol),
+      playerSprite(charSkin, o.id, 'GLOCK', 'walk', 0, false, charHair, charHairCol,
+                   { face:charFace, hat:charHat, eyewear:charEyewear,
+                     facial:charFacial, accCol:charAccCol }),
       0, 0, cv.width, cv.height);
     card.title = o.name;                              /* el nombre solo en el tooltip */
     card.appendChild(cv);
@@ -5677,9 +6468,21 @@ function renderCharUI(note) {
   const pv = $('char-preview'), pc = pv.getContext('2d');
   pc.clearRect(0,0,pv.width,pv.height);
   pc.imageSmoothingEnabled = true;
-  pc.drawImage(playerSprite(charSkin, charFit, 'GLOCK', 'walk', 0, false, charHair, charHairCol),
+  pc.drawImage(playerSprite(charSkin, charFit, 'GLOCK', 'walk', 0, false, charHair, charHairCol,
+                            { face:charFace, hat:charHat, eyewear:charEyewear,
+                              facial:charFacial, accCol:charAccCol }),
                0, 0, pv.width, pv.height);
-  renderHairUI();
+  renderCharTabs();
+  if (charTab === 1) renderHairUI();
+  if (charTab === 2) {
+    rejillaRasgo('cara-list',  CARAS, 'face',    charFace,    v => charFace = v,    'EXPRESIÓN');
+    rejillaRasgo('vello-list', VELLO, 'facial',  charFacial,  v => charFacial = v,  'VELLO FACIAL');
+  }
+  if (charTab === 3) {
+    rejillaRasgo('gorro-list', GORROS,'hat',     charHat,     v => charHat = v,     'CABEZA');
+    rejillaRasgo('gafas-list', GAFAS, 'eyewear', charEyewear, v => charEyewear = v, 'GAFAS');
+    renderAccUI();
+  }
 }
 let charReturn = 'scr-main', charWho = null;
 function openChar(volverA, jugador) {
@@ -5691,14 +6494,21 @@ function openChar(volverA, jugador) {
     charFit = charWho.fit|0;
     charHair = charWho.hair|0;
     charHairCol = charWho.hairCol || charHairCol;
+    charFace = charWho.face|0; charHat = charWho.hat|0;
+    charEyewear = charWho.eyewear|0; charFacial = charWho.facial|0;
+    charAccCol = charWho.accCol || charAccCol;
   } else {
     $('nick').value = PREFS.nick || $('nick').value || '';
     charSkin = PREFS.skin || charSkin;
     if (PREFS.fit !== null) charFit = PREFS.fit;
     if (PREFS.hair !== null) charHair = PREFS.hair;
     charHairCol = PREFS.hairCol || charHairCol;
+    charFace = PREFS.face|0; charHat = PREFS.hat|0;
+    charEyewear = PREFS.eyewear|0; charFacial = PREFS.facial|0;
+    charAccCol = PREFS.accCol || charAccCol;
   }
   charHue = hueOf(charHairCol);
+  charAccHue = hueOf(charAccCol);
   $('char-title').textContent = charWho
     ? 'PERSONAJE · ' + (charWho.nick || 'JUGADOR')
     : 'PERSONALIZACIÓN';
@@ -5867,10 +6677,12 @@ setTimeout(() => { try { renderHomePreview(); } catch(e){} }, 0);
    sala de espera.
    --------------------------------------------------------------------- */
 function locDePrefs() {
-  return { nick: miNick(), skin: mySkin(), fit: myFit(), hair: myHair(), hairCol: myHairCol(), pad: null };
+  return Object.assign({ nick: miNick(), skin: mySkin(), fit: myFit(),
+                         hair: myHair(), hairCol: myHairCol(), pad: null }, myAcc());
 }
 function serializeLocales() {
-  return LOC.map((l, i) => ({ i, nick:l.nick, skin:l.skin, fit:l.fit|0, hair:l.hair|0, hairCol:l.hairCol }));
+  return LOC.map((l, i) => ({ i, nick:l.nick, skin:l.skin, fit:l.fit|0, hair:l.hair|0, hairCol:l.hairCol,
+                              fa:l.face|0, ht:l.hat|0, ey:l.eyewear|0, ve:l.facial|0, ac:l.accCol }));
 }
 function reordenarJugadores() { let i = 1; for (const p of G.players.values()) p.order = i++; }
 /* deja G.players a la altura de LOC; si somos cliente, se lo pide al anfitrion */
@@ -5882,8 +6694,10 @@ function sincronizarLocales() {
   LOC.forEach((l, i) => {
     const id = idDeRanura(base, i);
     let p = G.players.get(id);
-    if (!p) { p = makePlayer(id, l.nick, l.skin, 0, l.fit, l.hair, l.hairCol); G.players.set(id, p); }
+    if (!p) { p = makePlayer(id, l.nick, l.skin, 0, l.fit, l.hair, l.hairCol, l); G.players.set(id, p); }
     p.nick = l.nick; p.skin = l.skin; p.fit = l.fit|0; p.hair = l.hair|0; p.hairCol = l.hairCol;
+    p.face = l.face|0; p.hat = l.hat|0; p.eyewear = l.eyewear|0; p.facial = l.facial|0;
+    p.accCol = l.accCol || p.accCol;
     p.slot = i; p.pad = l.pad; p.isLocal = true;
     if (!p.up) initLocal(p);
   });
@@ -5929,7 +6743,12 @@ function fichajePorMando() {
     if (NET.online && G.players.size >= MAX_PLAYERS) { addMsg('LA PARTIDA YA VA LLENA (8)', '#ff8a7a'); return; }
     const n = LOC.length + 1;
     LOC.push({ nick:'JUGADOR ' + n, skin:pick(SKINS), fit:(Math.random()<0.5?0:1),
-               hair:(Math.random()*HAIRS.length)|0, hairCol:pick(HAIR_NAT), pad:i });
+               hair:(Math.random()*HAIRS.length)|0, hairCol:pick(HAIR_NAT), pad:i,
+               face:(Math.random()*CARAS.length)|0,
+               hat: Math.random()<0.55 ? ((Math.random()*(GORROS.length-1))|0)+1 : 0,
+               eyewear: Math.random()<0.35 ? ((Math.random()*(GAFAS.length-1))|0)+1 : 0,
+               facial: Math.random()<0.40 ? ((Math.random()*(VELLO.length-1))|0)+1 : 0,
+               accCol: pick(ACC_COLS) });
     G.local = 1;
     Snd.pick();
     addMsg('MANDO ' + (i+1) + ' → J' + n, '#8ce89b');
@@ -6082,9 +6901,13 @@ function guardarPersonaje(volver) {
     const r = charWho.slot|0;
     const nick = (($('nick').value || charWho.nick || 'JUGADOR').slice(0,16)).toUpperCase();
     if (LOC[r]) { LOC[r].nick = nick; LOC[r].skin = charSkin; LOC[r].fit = charFit;
-                  LOC[r].hair = charHair; LOC[r].hairCol = charHairCol; }
+                  LOC[r].hair = charHair; LOC[r].hairCol = charHairCol;
+                  LOC[r].face = charFace; LOC[r].hat = charHat; LOC[r].eyewear = charEyewear;
+                  LOC[r].facial = charFacial; LOC[r].accCol = charAccCol; }
     charWho.nick = nick; charWho.skin = charSkin; charWho.fit = charFit;
     charWho.hair = charHair; charWho.hairCol = charHairCol;
+    charWho.face = charFace; charWho.hat = charHat; charWho.eyewear = charEyewear;
+    charWho.facial = charFacial; charWho.accCol = charAccCol;
     charWho = null;
     if (volver) showScreen(charReturn);
     sincronizarLocales();                               /* y que se entere la red */
@@ -6092,6 +6915,8 @@ function guardarPersonaje(volver) {
   }
   PREFS.skin = charSkin; PREFS.fit = charFit;
   PREFS.hair = charHair; PREFS.hairCol = charHairCol;
+  PREFS.face = charFace; PREFS.hat = charHat; PREFS.eyewear = charEyewear;
+  PREFS.facial = charFacial; PREFS.accCol = charAccCol;
   PREFS.nick = ($('nick').value || '').slice(0,16);
   saveChar();
   /* si ya estabas en una sala, el cambio se ve al momento */
@@ -6099,10 +6924,15 @@ function guardarPersonaje(volver) {
   if (yo) {
     yo.nick = miNick(); yo.skin = charSkin; yo.fit = charFit;
     yo.hair = charHair; yo.hairCol = charHairCol;
+    yo.face = charFace; yo.hat = charHat; yo.eyewear = charEyewear;
+    yo.facial = charFacial; yo.accCol = charAccCol;
     if (LOC[0]) { LOC[0].nick = yo.nick; LOC[0].skin = charSkin; LOC[0].fit = charFit;
-                  LOC[0].hair = charHair; LOC[0].hairCol = charHairCol; }
+                  LOC[0].hair = charHair; LOC[0].hairCol = charHairCol;
+                  LOC[0].face = charFace; LOC[0].hat = charHat; LOC[0].eyewear = charEyewear;
+                  LOC[0].facial = charFacial; LOC[0].accCol = charAccCol; }
     if (G.isHost) NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn });
-    else NET.send({ t:'look', id:G.meId, nick:yo.nick, skin:yo.skin, fit:yo.fit, hair:yo.hair, hairCol:yo.hairCol });
+    else NET.send({ t:'look', id:G.meId, nick:yo.nick, skin:yo.skin, fit:yo.fit, hair:yo.hair,
+                    hairCol:yo.hairCol, fa:yo.face, ht:yo.hat, ey:yo.eyewear, ve:yo.facial, ac:yo.accCol });
   }
   if (volver) showScreen(charReturn);
   if (charReturn === 'scr-lobby') renderLobby();
@@ -6111,6 +6941,11 @@ $('btn-char-random').onclick = () => {
   PREFS.skin = null; PREFS.fit = null; PREFS.hair = null; PREFS.hairCol = null; saveChar();
   charSkin = pick(SKINS); charFit = (Math.random()<0.5?0:1);
   charHair = (Math.random()*HAIRS.length)|0; charHairCol = pick(HAIR_NAT);
+  charFace = (Math.random()*CARAS.length)|0;
+  charHat = Math.random()<0.55 ? ((Math.random()*(GORROS.length-1))|0)+1 : 0;
+  charEyewear = Math.random()<0.35 ? ((Math.random()*(GAFAS.length-1))|0)+1 : 0;
+  charFacial = Math.random()<0.40 ? ((Math.random()*(VELLO.length-1))|0)+1 : 0;
+  charAccCol = pick(ACC_COLS); charAccHue = hueOf(charAccCol);
   charHue = hueOf(charHairCol);
   renderCharUI('Vuelves al sorteo automático al entrar en partida.');
 };
@@ -6134,6 +6969,19 @@ $('hair-hex').addEventListener('change', () => {
   if (!/^#[0-9a-fA-F]{6}$/.test(v)) { renderCharUI(); return; }
   charHairCol = v.toLowerCase();
   charHue = hueOf(charHairCol);
+  renderCharUI();
+});
+$('acc-hue').addEventListener('mousedown', (ev) => {
+  const cn = $('acc-hue'), r = cn.getBoundingClientRect();
+  charAccHue = clamp((ev.clientX - r.left)/r.width, 0, 1) * 360;
+  charAccCol = hslToHex(charAccHue, 0.66, 0.50);
+  renderCharUI();
+});
+$('acc-hex').addEventListener('change', () => {
+  const v = $('acc-hex').value.trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(v)) { renderCharUI(); return; }
+  charAccCol = v.toLowerCase();
+  charAccHue = hueOf(charAccCol);
   renderCharUI();
 });
 $('skin-field').addEventListener('mousedown', (ev) => {
