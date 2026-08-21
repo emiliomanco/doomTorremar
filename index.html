@@ -2487,6 +2487,12 @@ const ENEMIES = {
     kind:'melee', dmg:18, cd:1.2, sight:16, score:240, tex:{w:150,h:214}, drop:0.7, armor:0.45,
     look:{ shirt:'#4f5b3a', pants:'#333a26', hair:'#3a3a3a', headRatio:0.25, shoulders:0.86, angry:true,
            vest:'#7a8a5a', emoji:'🛡️' } },
+  /* muneco de la zona segura: ni se mueve ni pega, sirve para probar */
+  dummy:  { id:'dummy', name:'MUÑECO DE PRÁCTICAS', hp:250, speed:0, radius:0.34, scaleX:0.62, scaleY:0.98,
+    kind:'melee', attack:'nada', dmg:0, cd:99, sight:0, score:0, tex:{w:128,h:208}, drop:0,
+    quieto:true,
+    look:{ shirt:'#b8ae94', pants:'#6b6152', hair:'#8a7f6a', headRatio:0.26, shoulders:0.72,
+           face:11, emoji:'🎯' } },
   /* --- tres alumnos con manias propias --- */
   delegado:{ id:'delegado', name:'DELEGADO DE CLASE', hp:76, speed:1.9, radius:0.30, scaleX:0.58, scaleY:0.94,
     kind:'ranged', attack:'arenga', dmg:0, cd:4.2, sight:22, keepMin:6, keepMax:14,
@@ -3641,8 +3647,13 @@ class Enemy {
   die(byId) {
     this.alive = false; this.hp = 0; this.deadT = 0;
     if (!NET.online) G.hitStop = Math.max(G.hitStop||0, this.boss||this.mini ? 0.13 : 0.045);
+    if (this.def.quieto) {                              /* practicas: ni cuenta ni suma racha */
+      spawnParts('dust', this.x, this.y, 0.6, 14, 2.2, 2.2, 0.8);
+      Snd.at(this.x,this.y).noise(0.25, 0.14, 900);
+      return;
+    }
     G.kills++;
-    if (!this.minion || true) {
+    {
       G.combo++; G.comboT = 3.2;
       killFeed((this.elite?'★ ':'') + this.def.name + (G.combo>2 ? '   x'+G.combo : ''),
                this.boss||this.mini ? '#ff8a5c' : (this.elite ? '#ffd45e' : '#c9c3b2'));
@@ -3744,7 +3755,15 @@ class Enemy {
     if (n) { this.summonedOnce = true; addMsg('📢 ' + def.name + ' INVOCA REFUERZOS', '#ff9f5c'); Snd.roar(); }
   }
   update(dt) {
-    if (!this.alive) { this.deadT += dt; return; }
+    if (!this.alive) {
+      this.deadT += dt;
+      if (this.def.quieto && this.deadT > 3.5) {         /* el muneco se vuelve a levantar */
+        this.alive = true; this.hp = this.maxhp; this.deadT = 0; this.gib = false;
+        this.flash = 0.2; spawnFX('flash', this.x, this.y, 0.7, 0.35);
+        Snd.at(this.x,this.y).pick();
+      }
+      return;
+    }
     const def = this.def;
     this.flash = Math.max(0, this.flash-dt);
     this.anim = Math.max(0, this.anim-dt);
@@ -3753,6 +3772,11 @@ class Enemy {
       this.stagger -= dt;
       this.anim = 0;
       if (Math.random() < dt*8) spawnParts('dust', this.x, this.y, 0.5, 1, 0.4, 0.5, 0.3);
+      return;
+    }
+    if (def.quieto) {                                   /* muneco: solo encaja golpes */
+      if (this.hp < this.maxhp) { this.regenT = (this.regenT||0) - dt;
+        if (this.regenT <= 0) { this.regenT = 0.5; this.hp = Math.min(this.maxhp, this.hp + this.maxhp*0.08); } }
       return;
     }
     const t = this.nearestPlayer();
@@ -4939,7 +4963,17 @@ function refreshBossRef() {
 function spawnRoomEnemies() {
   G.enemies.length = 0;
   G.oleada = 0; G.oleadas = 0; G.olPool = null;
-  if (G.room === 0) { G.bossRef = null; return; }        /* sala 0: zona segura */
+  if (G.room === 0) {                                    /* sala 0: zona segura con dianas */
+    G.bossRef = null;
+    const sitios = freeCells(MAP.spawn, 7);
+    for (let i=0;i<4 && sitios.length;i++) {
+      const sp = sitios.splice((Math.random()*sitios.length)|0, 1)[0];
+      const m = new Enemy(ENEMIES.dummy, sp.x, sp.y, null);
+      m.maxhp = 250; m.hp = 250;
+      G.enemies.push(m);
+    }
+    return;
+  }
   const bossKey = BOSS_ROOMS[G.room];
   if (bossKey) {                                        /* sala de jefe: solo el jefe */
     const b = new Enemy(BOSSES[bossKey], MAP.w/2, 6.5, null);
@@ -5026,7 +5060,8 @@ function startRoom(n, seed) {
   buildFlows([...G.players.values()].filter(p=>!p.down));
   const bossKey = BOSS_ROOMS[n];
   if (n === 0) { G.roomState = 'cleared'; G.portalOn = true;
-    addMsg('SALA 0 · ZONA SEGURA · ENTRA EN EL CÍRCULO PARA EMPEZAR', '#8ce89b'); }
+    addMsg('SALA 0 · ZONA SEGURA · ENTRA EN EL CÍRCULO PARA EMPEZAR', '#8ce89b');
+    addMsg('🎯 HAY MUÑECOS PARA PROBAR ARMAS: SE LEVANTAN SOLOS', '#9fd0ff'); }
   else if (bossKey) startCinematic(BOSSES[bossKey].name, 'SALA ' + n);
   else addMsg('SALA ' + n + ' / ' + TOTAL_ROOMS + ' · ' + G.enemies.length + ' ENEMIGOS', '#9fd0ff');
   if (G.mod && G.mod.id !== 'none') {
@@ -6443,12 +6478,15 @@ function drawCrosshair(p) {
   }
 }
 function renderMinimap() {
-  const s = view.s, px = Math.max(3, Math.round(4.2*s));
+  const s = view.s;
+  /* ocupa un tercio de ancho o media altura, lo que quepa antes */
+  const px = clamp(Math.round(Math.min(view.w*0.30/MAP.w, view.v3*0.46/MAP.h)), 3, 16);
   const w = MAP.w*px, h = MAP.h*px;
-  const x0 = view.w - w - 16*s, y0 = 78*s;
+  const x0 = view.w - w - 14*s, y0 = Math.max(46*s, view.v3*0.5 - h*0.5);
   ctx.save();
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = 'rgba(6,6,10,0.82)'; ctx.fillRect(x0, y0, w, h);
+  ctx.globalAlpha = 0.94;
+  ctx.fillStyle = 'rgba(6,6,10,0.88)';
+  ctx.fillRect(x0-6*s, y0-6*s, w+12*s, h+12*s);
   for (let y=0;y<MAP.h;y++) for (let x=0;x<MAP.w;x++) {
     const t = cell(x,y);
     if (!t) continue;
@@ -6487,21 +6525,25 @@ function renderMinimap() {
       ctx.closePath(); ctx.fill();
     } else { ctx.beginPath(); ctx.arc(x0+pl.x*px, y0+pl.y*px, px*0.7, 0, TAU); ctx.fill(); }
   }
-  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=2;
-  ctx.strokeRect(x0, y0, w, h);
+  ctx.strokeStyle='rgba(180,150,90,0.65)'; ctx.lineWidth=Math.max(2, 2.4*s);
+  ctx.strokeRect(x0-6*s, y0-6*s, w+12*s, h+12*s);
   ctx.restore();
   /* mejoras conseguidas en la run */
   const p = cam();
   if (p && p.up && p.up.taken.length) {
     ctx.textAlign = 'right';
-    let uy = y0 + h + 22*s;
-    bigText('MEJORAS', x0 + w, uy, (15*s)|0, '#c9b48a', 'right');
     const cuenta = {};
     for (const id of p.up.taken) cuenta[id] = (cuenta[id]||0) + 1;
-    for (const id in cuenta) {
+    const ids = Object.keys(cuenta);
+    const paso = 17*s;
+    let uy = y0 + h + 24*s;
+    if (uy + (ids.length+1)*paso > view.v3 - 8*s)      /* si no cabe debajo, va encima */
+      uy = Math.max(30*s, y0 - 12*s - (ids.length+1)*paso);
+    bigText('MEJORAS', x0 + w, uy, (15*s)|0, '#c9b48a', 'right');
+    for (const id of ids) {
       const u = UPGRADES.find(o=>o.id===id);
       if (!u) continue;
-      uy += 18*s;
+      uy += paso;
       bigText(u.ico + ' ' + u.name + (cuenta[id]>1 ? ' x'+cuenta[id] : ''), x0 + w, uy, (13*s)|0, '#e8e2d2', 'right');
     }
   }
