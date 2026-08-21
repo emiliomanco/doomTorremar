@@ -735,7 +735,7 @@ function keyName(code) {
 const WEAPONS = [
   { id:0, key:'MACHETE',   name:'MACHETE',       ammo:null,      cost:0, rate:0.42, dmg:52, range:1.9,  pellets:3, spread:0.20, kick:14, noise:4,  auto:false, cross:'melee' },
   { id:1, key:'GLOCK',     name:'GLOCK 19',      ammo:'bullets', cost:1, rate:0.26, dmg:25, range:70,   pellets:1, spread:0.012, kick:8, noise:12, auto:false, cross:'pistol', mag:15, reload:1.25, casing:'brass' },
-  { id:2, key:'REMINGTON', name:'REMINGTON 870', ammo:'shells',  cost:1, rate:0.85, dmg:26, range:26,   pellets:5, spread:0.155, kick:22, noise:20, auto:false, cross:'shotgun', mag:6, reload:2.30, casing:'shell' },
+  { id:2, key:'REMINGTON', name:'REMINGTON 870', ammo:'shells',  cost:1, rate:0.80, dmg:32, range:26,   pellets:5, spread:0.155, kick:22, noise:20, auto:false, cross:'shotgun', mag:6, reload:2.30, casing:'shell' },
   { id:3, key:'M16',       name:'M16',           ammo:'bullets', cost:1, rate:0.095, dmg:17, range:70,  pellets:1, spread:0.016, kick:6, noise:16, auto:true,  cross:'rifle', mag:30, reload:1.95, casing:'brass' },
   { id:4, key:'GRENADE',   name:'FRAG GRENADE',  ammo:'nades',   cost:1, rate:1.05, dmg:0,  range:0,    pellets:0, spread:0, kick:12, noise:8,  auto:false, cross:'nade', proj:true }
 ];
@@ -4897,9 +4897,11 @@ function hitscan(p, ang, w, salta, mengua) {
     }
     if (w.aturde && !best.boss) best.stagger = Math.max(best.stagger, 0.55);
     /* ejecucion: machete a bocajarro sobre alguien que ya va tocado */
-    const umbral = 0.30 + (u.ejec||0)*0.20;
-    if (p.weapon === 0 && !best.boss && best.alive && bestT < 1.5 &&
-        (best.hp <= best.maxhp*umbral || best.stagger > 0) && best.hp > 0) {
+    /* la ejecucion pide vida baja de verdad; el aturdimiento solo la facilita.
+       Jefes y minijefes no se ejecutan nunca. */
+    const umbral = 0.30 + (u.ejec||0)*0.20 + (best.stagger > 0 ? 0.15 : 0);
+    if (p.weapon === 0 && !best.boss && !best.mini && best.alive && bestT < 1.5 &&
+        best.hp <= best.maxhp*umbral && best.hp > 0) {
       ejecutar(p, best);
       p.hitMark = 0.34;
       return;
