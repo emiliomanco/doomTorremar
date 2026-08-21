@@ -52,9 +52,15 @@
   #cine{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
     background:#000;z-index:12;animation:fadein .35s}
   #cine.on{display:flex}
-  #cine .bn{font-family:Impact,"Arial Black",sans-serif;font-size:clamp(42px,11vw,140px);color:#e01919;
-    letter-spacing:6px;text-shadow:0 0 40px rgba(224,25,25,.6);animation:pulse 1.1s infinite}
+  #cine .bn{font-family:Impact,"Arial Black",sans-serif;font-size:clamp(34px,9vw,120px);color:#e01919;
+    letter-spacing:5px;text-shadow:0 0 40px rgba(224,25,25,.6);animation:pulse 1.1s infinite;
+    white-space:nowrap;max-width:96vw;text-align:center;line-height:1}
   #cine .bs{color:#ffb0b0;letter-spacing:8px;font-size:clamp(12px,2.4vw,22px);margin-top:14px}
+  #cine .bt{color:#8a7a6a;letter-spacing:3px;font-size:clamp(10px,1.7vw,15px);margin-top:10px;
+    max-width:70vw;text-align:center}
+  #cine-art{width:clamp(110px,17vw,230px);height:auto;margin-bottom:2px;
+    filter:drop-shadow(0 0 26px rgba(224,25,25,.55));animation:aparece .5s}
+  @keyframes aparece{from{opacity:0;transform:translateY(24px) scale(.9)}to{opacity:1}}
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
   @keyframes fadein{from{opacity:0}to{opacity:1}}
   #toast{position:fixed;left:50%;top:16%;transform:translateX(-50%);z-index:14;display:flex;
@@ -412,7 +418,12 @@
   </div>
 </div>
 
-<div id="cine"><div class="bn" id="cine-name">JEFE</div><div class="bs" id="cine-sub">SALA 10</div></div>
+<div id="cine">
+  <canvas id="cine-art" width="300" height="420"></canvas>
+  <div class="bn" id="cine-name">JEFE</div>
+  <div class="bs" id="cine-sub">SALA 10</div>
+  <div class="bt" id="cine-tag"></div>
+</div>
 <div id="toast"></div>
 <script>
 'use strict';
@@ -1177,6 +1188,32 @@ function buildFloorTextures() {
     c.fillStyle='rgba(0,0,0,0.28)'; c.fillRect(0,31,W,2); c.fillRect(31,0,2,H);
     noiseOver(c,W,H,120,0.2);
   });
+  /* baldosa de pasillo de colegio: damero claro y oscuro */
+  const baldosa = (a, b) => F((c,W,H)=>{
+    c.fillStyle=a; c.fillRect(0,0,W,H);
+    c.fillStyle=b; c.fillRect(0,0,W/2,H/2); c.fillRect(W/2,H/2,W/2,H/2);
+    c.fillStyle='rgba(0,0,0,0.30)';
+    c.fillRect(0,H/2-1,W,2); c.fillRect(W/2-1,0,2,H);
+    c.fillStyle='rgba(255,255,255,0.07)';
+    c.fillRect(0,H/2+1,W,1); c.fillRect(W/2+1,0,1,H);
+    for (let i=0;i<90;i++){ c.fillStyle='rgba(0,0,0,'+(Math.random()*0.05).toFixed(3)+')';
+      c.fillRect((Math.random()*W)|0,(Math.random()*H)|0,2,2); }
+    noiseOver(c,W,H,100,0.16);
+  });
+  /* suelo del gimnasio: duelas y una linea pintada */
+  const parquet = (linea) => F((c,W,H)=>{
+    c.fillStyle='#8a6435'; c.fillRect(0,0,W,H);
+    for (let y=0;y<H;y+=8) {
+      c.fillStyle = (y/8)%2 ? '#9a7040' : '#7e5a2f';
+      c.fillRect(0,y,W,8);
+      c.fillStyle='rgba(0,0,0,0.22)'; c.fillRect(0,y+7,W,1);
+      for (let x=((y/8)%2)*16; x<W; x+=32) c.fillRect(x,y,1,8);
+    }
+    for (let i=0;i<140;i++){ c.fillStyle='rgba(255,240,200,'+(Math.random()*0.05).toFixed(3)+')';
+      c.fillRect((Math.random()*W)|0,(Math.random()*H)|0,3,1); }
+    if (linea) { c.fillStyle='#e8e4d8'; c.fillRect(0,26,W,5); }
+    noiseOver(c,W,H,80,0.14);
+  });
   const ceil = (col, lamp) => C((c,W,H)=>{
     c.fillStyle=col; c.fillRect(0,0,W,H);
     c.fillStyle='rgba(255,255,255,0.05)';
@@ -1186,22 +1223,34 @@ function buildFloorTextures() {
       c.fillStyle='rgba(255,238,196,0.28)'; c.fillRect(6,10,52,14); }
     if (lamp===2) { c.fillStyle='rgba(255,220,180,0.22)'; c.beginPath(); c.arc(32,32,16,0,TAU); c.fill();
       c.fillStyle='#ffe6b0'; c.beginPath(); c.arc(32,32,7,0,TAU); c.fill(); }
+    if (lamp===3) {                                    /* claraboya con luz de dia */
+      c.fillStyle='#0e1626'; c.fillRect(8,8,48,48);
+      c.fillStyle='#7fa8c8'; c.fillRect(11,11,42,42);
+      const g2=c.createLinearGradient(11,11,53,53);
+      g2.addColorStop(0,'rgba(255,255,255,0.55)'); g2.addColorStop(0.5,'rgba(200,225,245,0.20)');
+      g2.addColorStop(1,'rgba(255,255,255,0.45)');
+      c.fillStyle=g2; c.fillRect(11,11,42,42);
+      c.fillStyle='#3d4a57';                            /* travesanos */
+      c.fillRect(31,11,2,42); c.fillRect(11,31,42,2);
+    }
     noiseOver(c,W,H,90,0.2);
   });
   const cA=concrete('#57534d',false), cB=concrete('#57534d',true), mp=metalPlate(), bf=bloodFloor();
-  FLOORSET[1]=[cA,cA,cB,cA,mp,cA,cB,bf];
+  const bd=baldosa('#8e8a80','#6b675e'), bd2=baldosa('#7d8a8e','#5c666b');
+  const pq=parquet(false), pql=parquet(true);
+  FLOORSET[1]=[cA,bd,cB,bd,mp,cA,bd,bf];
   const gA=concrete('#4b4f56',false), gB=concrete('#4b4f56',true);
-  FLOORSET[2]=[gA,gA,mp,gB,gA,mp,gB,bf];
+  FLOORSET[2]=[gA,bd2,mp,gB,bd2,mp,gB,bf];
   const oA=concrete('#635944',false), oB=concrete('#635944',true);
-  FLOORSET[3]=[oA,oA,oB,oA,mp,oB,oA,bf];
+  FLOORSET[3]=[oA,pq,oB,pql,mp,pq,oA,bf];
   const dA=concrete('#3b3542',false), dB=concrete('#3b3542',true);
   FLOORSET[4]=[dA,dA,dB,dA,bf,dB,dA,mp];
-  const t1=ceil('#4c4740',0), l1=ceil('#4c4740',1);
-  CEILSET[1]=[t1,t1,l1,t1];
+  const t1=ceil('#4c4740',0), l1=ceil('#4c4740',1), s1=ceil('#4c4740',3);
+  CEILSET[1]=[t1,t1,l1,t1,s1,t1,l1,t1];
   const t2=ceil('#41454c',0), l2=ceil('#41454c',1);
   CEILSET[2]=[t2,t2,l2,t2];
-  const t3=ceil('#544c3c',0), l3=ceil('#544c3c',1);
-  CEILSET[3]=[t3,t3,l3,t3];
+  const t3=ceil('#544c3c',0), l3=ceil('#544c3c',1), s3=ceil('#544c3c',3);
+  CEILSET[3]=[t3,t3,l3,t3,s3,t3,l3,s3];
   const t4=ceil('#2c2636',0), l4=ceil('#2c2636',2);
   CEILSET[4]=[t4,t4,t4,l4];
 }
@@ -3832,7 +3881,18 @@ class Enemy {
     if (this.boss && !this.phase2 && this.hp <= this.maxhp*0.5) {
       this.phase2 = true; this.speed *= 1.30; this.blink = 999;
       addMsg('⚠ ' + this.def.name + ' ENTRA EN FASE 2', '#ff5c5c');
+      /* la sala se cae a oscuras y vuelve: se nota el cambio de marcha */
+      G.fase2T = 2.4;
+      MAP.lampsOn = false;
+      if (MAP.lamps) for (const lp of MAP.lamps) lp.rota = true;
+      for (const q of G.players.values()) if (q.isLocal) {
+        q.shake = Math.min(16, (q.shake||0) + 12);
+        q.flash = Math.max(q.flash||0, 0.25);
+      }
+      spawnFX('onda', this.x, this.y, 5.5, 0.7);
+      addLight(this.x, this.y, 16, 1.9, 0.6, 1);
       Snd.roar();
+      Snd.tone(48, 1.6, 'sawtooth', 0.14, 26);
     }
     if (this.hp <= 0) this.die(byId);
   }
@@ -5222,6 +5282,7 @@ function spawnRoomEnemies() {
     const e = new Enemy(MINIBOSSES[mb], s.x, s.y, null);
     G.enemies.push(e); G.bossRef = e;
     addMsg('⚠ MINIJEFE: ' + MINIBOSSES[mb].name, '#ff8a5c');
+    G.miniBanner = { def: MINIBOSSES[mb], hp: Math.round(e.maxhp), t: 3.4 };
   }
 }
 function startRoom(n, seed) {
@@ -5233,6 +5294,7 @@ function startRoom(n, seed) {
   G.dmgNums.length = 0; G.feed.length = 0; G.combo = 0; G.decals.length = 0; G.holes.length = 0;
   if (G.trazas) G.trazas.length = 0;
   if (G.nubes) G.nubes.length = 0;
+  G.fase2T = 0; G.miniBanner = null;
   LIGHTS.length = 0; LA.length = 0;
   /* en un apagon los fluorescentes se caen: solo aguantan unos parpadeando */
   const apagon = G.mod && G.mod.id === 'blackout';
@@ -5269,7 +5331,7 @@ function startRoom(n, seed) {
   if (n === 0) { G.roomState = 'cleared'; G.portalOn = true;
     addMsg('SALA 0 · ZONA SEGURA · ENTRA EN EL CÍRCULO PARA EMPEZAR', '#8ce89b');
     addMsg('🎯 HAY MUÑECOS PARA PROBAR ARMAS: SE LEVANTAN SOLOS', '#9fd0ff'); }
-  else if (bossKey) startCinematic(BOSSES[bossKey].name, 'SALA ' + n);
+  else if (bossKey) startCinematic(BOSSES[bossKey].name, 'SALA ' + n, BOSSES[bossKey]);
   else addMsg('SALA ' + n + ' / ' + TOTAL_ROOMS + ' · ' + G.enemies.length + ' ENEMIGOS', '#9fd0ff');
   if (G.mod && G.mod.id !== 'none') {
     addMsg('⚠ ' + G.mod.name + ' · ' + G.mod.desc, '#ffb347');
@@ -5278,10 +5340,33 @@ function startRoom(n, seed) {
   }
   Snd.door();
 }
-function startCinematic(name, sub) {
+/* frase de presentacion de cada jefe y minijefe */
+const CINE_TAG = {
+  roberto:  'EL DE LA MOTO. NO FRENA POR NADIE.',
+  arturo:   'TRAJE AZUL Y CERO PACIENCIA.',
+  david:    'CORONILLA DESPEJADA, PUNTERÍA INTACTA.',
+  jorge:    'CORONEL. AQUÍ SE ACABA EL RECREO.'
+};
+function startCinematic(name, sub, def) {
   G.state = 'cine'; G.cineT = 3.0;
-  $('cine-name').textContent = name;
+  const el = $('cine-name');
+  el.textContent = name;
+  /* el nombre se ajusta al ancho: JORGE CORONEL no cabe a 11vw */
+  el.style.fontSize = Math.round(clamp((window.innerWidth*0.90) / Math.max(6, name.length*0.66),
+                                       30, 120)) + 'px';
   $('cine-sub').textContent = sub;
+  $('cine-tag').textContent = (def && CINE_TAG[def.id]) || '';
+  const art = $('cine-art');
+  if (art && def) {                                     /* retrato del jefe a pantalla */
+    const cc = art.getContext('2d');
+    const tex = spriteOf(def, 'attack', 0);
+    const esc = Math.min(art.width/tex.width, art.height/tex.height);
+    cc.clearRect(0, 0, art.width, art.height);
+    cc.imageSmoothingEnabled = true;
+    cc.drawImage(tex, (art.width-tex.width*esc)/2, art.height-tex.height*esc,
+                 tex.width*esc, tex.height*esc);
+    art.style.display = '';
+  } else if (art) art.style.display = 'none';
   $('cine').classList.add('on');
   Snd.roar();
 }
@@ -6625,6 +6710,34 @@ function brujula(p) {
     ctx.globalAlpha = 1;
   }
 }
+/* pancarta lateral cuando aparece un minijefe: retrato, nombre y aviso */
+function bannerMini() {
+  const b = G.miniBanner;
+  if (!b || b.t <= 0) return;
+  const W = view.w, H = view.v3, s = view.s;
+  const entra = clamp((3.4 - b.t)/0.28, 0, 1);          /* entra deslizando */
+  const sale = clamp(b.t/0.5, 0, 1);
+  const bw = 268*s, bh = 92*s;
+  const bx = -bw + (bw + 16*s) * entra * sale;
+  const by = H*0.30;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, sale);
+  ctx.fillStyle = 'rgba(8,6,10,0.86)';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#c0392b';
+  ctx.fillRect(bx + bw - 5*s, by, 5*s, bh);
+  ctx.strokeStyle = 'rgba(224,90,50,0.75)'; ctx.lineWidth = Math.max(1.5, 2*s);
+  ctx.strokeRect(bx, by, bw, bh);
+  const tex = spriteOf(b.def, 'attack', 0);
+  const esc = Math.min((bh-10*s)/tex.height, (78*s)/tex.width);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(tex, bx + 8*s, by + bh - 5*s - tex.height*esc, tex.width*esc, tex.height*esc);
+  bigText('MINIJEFE', bx + 96*s, by + 26*s, (13*s)|0, '#ff8a5c', 'left');
+  bigText(b.def.name, bx + 96*s,  by + 52*s,
+          clamp((bw-104*s)/(b.def.name.length*0.58), 13*s, 26*s)|0, '#ffe6a8', 'left');
+  bigText((b.hp || Math.round(b.def.hp)) + ' PV', bx + 96*s, by + 74*s, (13*s)|0, '#c9b48a', 'left');
+  ctx.restore();
+}
 function drawCrosshair(p) {
   const W = view.w, s = view.s, cx = W/2, cy = view.v3/2;
   const w = WEAPONS[p.weapon];
@@ -6906,6 +7019,7 @@ function renderHUD() {
     bigText(Math.max(0,Math.round(boss.hp)) + ' / ' + Math.round(boss.maxhp),
             bx+bw2-6*s, by+bh*0.72, (12*s)|0, '#ffd9d0', 'right');
   }
+  bannerMini();
   brujula(p);
   drawCrosshair(p);
   if (p.pad !== null && p.pad !== undefined && !PADS[p.pad])
@@ -6971,7 +7085,11 @@ function renderHUD() {
     bigText('ENEMIGOS ' + G.enemies.filter(e=>e.alive).length, W-16*s, 70*s, (16*s)|0, '#ff9b8a', 'right');
   /* ---------------- capas de pantalla ---------------- */
   if (!vignette) buildVignette();
-  const tinte = (G.mod && G.mod.tinte) || TONO_ZONA[MAP.zone] || null;
+  let tinte = (G.mod && G.mod.tinte) || TONO_ZONA[MAP.zone] || null;
+  if ((G.fase2T||0) > 0) {                              /* la sala se pone roja un momento */
+    const kf = clamp(G.fase2T/2.4, 0, 1);
+    tinte = 'rgba(150,10,10,' + (0.10 + 0.30*kf).toFixed(3) + ')';
+  }
   if (tinte) { ctx.fillStyle = tinte; ctx.fillRect(0, 0, W, view.v3); }
   if (p.flash > 0) { ctx.fillStyle='rgba(255,224,164,'+clamp(p.flash*0.6,0,0.2)+')'; ctx.fillRect(0,0,W,H); }
   ctx.globalAlpha = 0.05;
@@ -8254,6 +8372,18 @@ function frame(now) {
     G.time += dt;
     updateLights(dt);
     /* cuanto aprieta la sala: enemigos cerca, vida baja y jefe en pie */
+    if (G.miniBanner) {
+      G.miniBanner.t -= dt;
+      if (G.miniBanner.t <= 0) G.miniBanner = null;
+    }
+    if (G.fase2T > 0) {                                 /* apagon breve de la fase 2 */
+      G.fase2T -= dt;
+      if (G.fase2T <= 0) {
+        G.fase2T = 0; MAP.lampsOn = true;
+        if (MAP.lamps) for (const lp of MAP.lamps) lp.rota = false;
+        addMsg('LAS LUCES VUELVEN', '#9fd0ff');
+      }
+    }
     G.tenT = (G.tenT||0) - dt;
     if (G.tenT <= 0) {
       G.tenT = 0.35;
