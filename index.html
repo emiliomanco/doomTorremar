@@ -3449,6 +3449,30 @@ function playerSprite(skin, fit, weaponKey, state, frame, down, hair, hairCol, r
 }
 
 /* --------------------------- proyectiles ----------------------------- */
+/* siluetas pequenas para las ranuras del HUD */
+const ARMA_ICO = (i, activo) => sprite('ico_w'+i+(activo?'a':''), 40, 22, (c,W,H)=>{
+  const col = activo ? '#2a2008' : '#c9b48a';
+  c.save(); c.translate(W*0.5, H*0.5);
+  c.fillStyle = col; c.strokeStyle = col; c.lineWidth = 1.6;
+  if (i === 0) {                                        /* machete */
+    c.beginPath(); c.moveTo(-13,4); c.lineTo(6,-6); c.lineTo(9,-2); c.lineTo(-10,7); c.closePath(); c.fill();
+    c.fillRect(7,-4,7,5);
+  } else if (i === 1) {                                 /* pistola */
+    c.fillRect(-11,-5,17,5); c.fillRect(-6,0,5,8);
+    c.fillRect(-11,-3,3,3);
+  } else if (i === 2) {                                 /* escopeta */
+    c.fillRect(-15,-4,24,4); c.fillRect(-15,0,20,2);
+    c.fillRect(8,-5,7,6);
+  } else if (i === 3) {                                 /* fusil */
+    c.fillRect(-15,-4,26,4); c.fillRect(-4,0,4,7);
+    c.fillRect(-15,-7,7,3); c.fillRect(9,-6,5,3);
+  } else {                                              /* granada */
+    c.beginPath(); c.ellipse(0,2,6,7,0,0,TAU); c.fill();
+    c.fillRect(-2,-8,4,4);
+    c.beginPath(); c.moveTo(2,-7); c.lineTo(8,-9); c.lineTo(8,-6); c.closePath(); c.fill();
+  }
+  c.restore();
+});
 const PROJ = {
   bullet: () => sprite('pr_bullet',32,32,(c,W,H)=>{ ellipse(c,W/2,H/2,W*0.22,H*0.22,'#ffe08a');
     ellipse(c,W/2,H/2,W*0.12,H*0.12,'#fff8e0'); }),
@@ -5453,7 +5477,13 @@ function updateLocal(p, dt) {
     else if (it.kind === 'health') { if (p.hp < p.maxhp) { p.hp = Math.min(p.maxhp, p.hp+d.amount); ok = true; } }
     else if (it.kind === 'armor') { if (p.armor < 100) { p.armor = Math.min(100, p.armor+d.amount); ok = true; } }
     else { if (p.ammo[it.kind] < p.maxAmmo[it.kind]) { p.ammo[it.kind] = Math.min(p.maxAmmo[it.kind], p.ammo[it.kind]+d.amount); ok = true; } }
-    if (ok) { it.taken = true; Snd.pick(); addMsg(d.msg, '#9fe8a0'); NET.send({ t:'item', id:it.id }); }
+    if (ok) {
+      it.taken = true; Snd.pick(); addMsg(d.msg, '#9fe8a0');
+      spawnFX('flash', it.x, it.y, 0.55, 0.22);          /* pequeno destello al cogerlo */
+      spawnParts('spark', it.x, it.y, 0.45, 5, 1.4, 1.6, 0.28);
+      if (it.raro && LIGHTS.length < 30) addLight(it.x, it.y, 3.6, 0.55, 0.2, 1);
+      NET.send({ t:'item', id:it.id });
+    }
   }
   /* ---------- latido con poca vida ---------- */
   if (p.hp < p.maxhp*0.33) { p.beat -= dt; if (p.beat <= 0) { p.beat = 1.0; Snd.beat(); } }
@@ -6246,7 +6276,12 @@ function onNet(from, m) {
       if (G.state === 'menu' || G.state === 'lobby') renderLobby();
       break;
     }
-    case 'item': { const it = G.items.find(o=>o.id===m.id); if (it) it.taken = true; if (G.isHost) relay(from, m); break; }
+    case 'item': {
+      const it = G.items.find(o=>o.id===m.id);
+      if (it) { it.taken = true; spawnFX('flash', it.x, it.y, 0.5, 0.2);
+                spawnParts('spark', it.x, it.y, 0.45, 4, 1.2, 1.4, 0.25); }
+      if (G.isHost) relay(from, m); break;
+    }
     case 'shot': {
       const p = G.players.get(m.id);
       if (p && !p.isLocal) { p.anim = 0.2; p.muzzle = 0.08;
@@ -7478,14 +7513,23 @@ function renderHUD() {
   if (alt2) bigText(keyName(KEYS.alt) + ' · ' + alt2.name, x2+ww/2, top+62*s,
                     clamp(ww/((alt2.name.length+10)*0.60), 9*s, 13*s)|0,
                     (p.zoomT||0) > 0 || p.burstLeft > 0 ? '#ffd45e' : '#93a0ad');
-  const slotW = Math.min(38*s, ww/6);
+  const slotW = Math.min(46*s, ww/5.4);
   for (let i=0;i<5;i++) {
     const sx2 = x2+ww/2 - slotW*2.5 + i*slotW;
     const bloq = p.unlocked && !p.unlocked[i];
-    ctx.fillStyle = bloq ? '#2b2622' : (i===p.weapon ? '#ffcf5c' : '#5c5344');
-    ctx.fillRect(sx2+2*s, top+barH-21*s, slotW-4*s, 14*s);
-    bigText(bloq ? '🔒' : String(i+1), sx2+slotW/2, top+barH-9*s, (12*s)|0,
-            bloq ? '#6b6155' : (i===p.weapon?'#2a2008':'#c9b48a'), 'center', false);
+    const activo = i === p.weapon;
+    ctx.fillStyle = bloq ? '#2b2622' : (activo ? '#ffcf5c' : '#5c5344');
+    ctx.fillRect(sx2+2*s, top+barH-24*s, slotW-4*s, 18*s);
+    if (bloq) {
+      bigText('🔒', sx2+slotW/2, top+barH-10*s, (12*s)|0, '#6b6155', 'center', false);
+    } else {
+      const ico = ARMA_ICO(i, activo);                   /* silueta del arma */
+      const iw = Math.min(slotW-10*s, 30*s), ih = iw*ico.height/ico.width;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(ico, sx2+slotW/2-iw/2, top+barH-17*s-ih*0.5, iw, ih);
+      bigText(String(i+1), sx2+4*s, top+barH-10*s, (9*s)|0,
+              activo ? '#2a2008' : '#c9b48a', 'left', false);
+    }
   }
   /* ---------------- HUD de equipo (esquina) ---------------- */
   const team = [...G.players.values()].sort((a,b)=>a.order-b.order);
