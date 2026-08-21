@@ -3933,10 +3933,8 @@ class Enemy {
     if (hostSide && Math.random() < drops*(1+bonus)*modDrop*(this.elite?1.6:1))
       dropItem(this.x, this.y, this.boss||this.mini||this.elite);
     if (hostSide && this.elite && Math.random() < 0.5) dropItem(this.x+0.4, this.y, true);
-    if (this.boss && WEAPON_LOCKS[this.def.id] !== undefined) {
+    if (this.boss && WEAPON_LOCKS[this.def.id] !== undefined)
       unlockWeapon(WEAPON_LOCKS[this.def.id], this.def.name);
-      if (G.isHost) NET.send({ t:'unlock', w:WEAPON_LOCKS[this.def.id], name:this.def.name });
-    }
     if (this.boss || this.mini) {
       spawnFX('boom', this.x, this.y, 2.2, 0.7); Snd.boom();
       if (hostSide) { dropItem(this.x+0.6, this.y, true); dropItem(this.x-0.6, this.y, true); }
@@ -4370,7 +4368,7 @@ function ammoOf(p, w) { const def = WEAPONS[w]; return def.ammo ? p.ammo[def.amm
 function resetArsenal(p) {
   p.unlocked = (G.diff === DIFF_IMPOSIBLE) ? [1,1,0,0,0] : [1,1,1,1,1];
 }
-function unlockWeapon(i, bossName) {
+function unlockWeapon(i, bossName, avisar) {
   let algo = false;
   for (const p of G.players.values()) {
     if (!p.unlocked) resetArsenal(p);
@@ -4380,6 +4378,7 @@ function unlockWeapon(i, bossName) {
   addMsg('🔓 ' + WEAPONS[i].name + ' DESBLOQUEADA' + (bossName ? ' · ' + bossName : ''), '#8ce89b');
   killFeed('🔓 ' + WEAPONS[i].name, '#8ce89b');
   G.armaBanner = { w:i, t:3.6, de:bossName || '' };
+  if (avisar !== false && G.isHost) NET.send({ t:'unlock', w:i, name:bossName || '' });
   Snd.pick();
   setTimeout(()=>Snd.pick(), 140);
 }
@@ -5753,7 +5752,7 @@ function onNet(from, m) {
       if (G.isHost) relay(from, m);
       break;
     }
-    case 'unlock': { unlockWeapon(m.w, m.name); if (G.isHost) relay(from, m); break; }
+    case 'unlock': { unlockWeapon(m.w, m.name, false); if (G.isHost) relay(from, m); break; }
     case 'upgOpen': if (!G.isHost) openUpgrades(); break;
     case 'pdmg': {
       const p = G.players.get(m.id);
