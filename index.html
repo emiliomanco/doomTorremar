@@ -184,12 +184,12 @@
     <div class="tile solo" id="tile-solo">
       <div class="tico">🎯</div>
       <h3>UN JUGADOR</h3>
-      <p>50 salas tú solo contra el claustro</p>
+      <p>50 salas contra el claustro · o el modo horda sin fin</p>
     </div>
     <div class="tile multi" id="tile-mp">
       <div class="tico">🌐</div>
       <h3>MULTIJUGADOR</h3>
-      <p>Cooperativo de hasta 8 jugadores</p>
+      <p>Cooperativo hasta 8 · en red, en el mismo sofá o las dos cosas</p>
     </div>
   </div>
   <div class="muted" id="net-state">Red: comprobando…</div>
@@ -7532,7 +7532,7 @@ function showScreen(id) {
   if (id) $(id).classList.add('on');
   document.body.classList.toggle('free', !!id);
   if (id && document.pointerLockElement) document.exitPointerLock();
-  if (id === 'scr-main') renderHomePreview();          /* el mosaico muestra tu personaje */
+  if (id === 'scr-main') { renderHomePreview(); renderResumenMenu(); }
 }
 function renderLobby() {
   const online = NET.online, local = !!G.local || LOC.length > 1;
@@ -8994,14 +8994,27 @@ buildWallTextures();
 buildFloorTextures();
 genRoom(1, 12345);
 resize();
-if (BEST.runs) {
-  const rec = document.createElement('div');
-  rec.className = 'muted';
-  rec.innerHTML = '★ MEJOR MARCA: sala ' + BEST.room + ' de ' + TOTAL_ROOMS + ' · ' + BEST.kills +
-                  ' bajas · ' + BEST.runs + ' runs';
-  rec.style.color = '#ffd45e';
-  $('scr-main').appendChild(rec);
+/* resumen de marcas bajo los mosaicos del menu */
+function renderResumenMenu() {
+  let rec = $('menu-marcas');
+  if (!rec) {
+    rec = document.createElement('div');
+    rec.id = 'menu-marcas'; rec.className = 'muted';
+    rec.style.cssText = 'color:#ffd45e;margin-top:4px;text-align:center;line-height:1.5';
+    $('scr-main').insertBefore(rec, $('net-state'));
+  }
+  if (!BEST.runs && !Object.keys(BEST.horda||{}).length) { rec.textContent = ''; return; }
+  const med = Object.keys(BEST.medallas||{}).length;
+  let mejorH = 0;
+  for (const k in (BEST.horda||{})) mejorH = Math.max(mejorH, BEST.horda[k].ola||0);
+  rec.innerHTML =
+    '★ MEJOR MARCA: sala ' + BEST.room + ' de ' + TOTAL_ROOMS + ' · ' + BEST.kills +
+    ' bajas · ' + BEST.runs + ' runs' +
+    (mejorH ? '  ·  🌊 MEJOR OLEADA: ' + mejorH : '') +
+    '<br><span style="color:#c9b48a">🏆 ' + med + ' de ' + MEDALLAS.length +
+    ' medallas · pulsa el trofeo para ver las marcas</span>';
 }
+renderResumenMenu();
 $('net-state').textContent = NET.available
   ? 'Red: PeerJS lista · crea o únete a una sala'
   : 'Red: PeerJS no disponible (sin conexión) · el modo solitario funciona igual';
