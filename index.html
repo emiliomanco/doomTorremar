@@ -462,7 +462,13 @@ const MODIFIERS = [
                    tinte:'rgba(120,40,150,0.13)' },
   { id:'swift',    name:'TURNO DOBLE',         desc:'Van acelerados pero aguantan menos', spd:1.4, hp:0.62 },
   { id:'volatile', name:'ALMACÉN VOLÁTIL',     desc:'Barriles por todas partes', barrels:2.4,
-                   tinte:'rgba(180,90,25,0.14)' }
+                   tinte:'rgba(180,90,25,0.14)' },
+  { id:'recreo',   name:'HORA DEL RECREO',      desc:'Van todos con chicle: rápidos y esquivos', spd:1.55, hp:0.72,
+                   tinte:'rgba(224,72,154,0.11)' },
+  { id:'examen',   name:'SEMANA DE EXÁMENES',   desc:'Menos enemigos pero muy correosos', count:0.62, hp:2.1,
+                   tinte:'rgba(60,90,160,0.13)' },
+  { id:'huelga',   name:'HUELGA DE PROFESORES', desc:'Sale más botín, pero llegan por oleadas', drops:2.2, oleada:1,
+                   tinte:'rgba(50,150,90,0.11)' }
 ];
 /* cada zona tiene su ambiente de color; la arena de jefe, la mas cargada */
 const TONO_ZONA = { 1:'rgba(120,120,140,0.05)', 2:'rgba(60,105,165,0.11)',
@@ -3765,7 +3771,8 @@ class Enemy {
     const drops = this.def.drop || 0;
     const rematador = G.players.get(this.lastHitBy) || me();
     const bonus = (rematador && rematador.up ? rematador.up.drops : 0);
-    if (hostSide && Math.random() < drops*(1+bonus)*(this.elite?1.6:1))
+    const modDrop = (G.mod && G.mod.drops) ? G.mod.drops : 1;
+    if (hostSide && Math.random() < drops*(1+bonus)*modDrop*(this.elite?1.6:1))
       dropItem(this.x, this.y, this.boss||this.mini||this.elite);
     if (hostSide && this.elite && Math.random() < 0.5) dropItem(this.x+0.4, this.y, true);
     if (this.boss && WEAPON_LOCKS[this.def.id] !== undefined) {
@@ -5092,7 +5099,7 @@ function spawnRoomEnemies() {
   /* De la sala 6 en adelante, una de cada tres llega por oleadas: entra
      parte del grupo y el resto cuando quedan pocos en pie. */
   G.oleada = 0; G.oleadas = 0; G.olPool = null;
-  const porOleadas = G.room >= 6 && !bossKey && Math.random() < 0.34;
+  const porOleadas = !bossKey && (mod.oleada ? true : (G.room >= 6 && Math.random() < 0.34));
   const primera = porOleadas ? Math.max(3, Math.round(n*0.55)) : n;
   if (porOleadas) {
     G.oleadas = 2; G.oleada = 1;
@@ -5442,7 +5449,9 @@ function applySnapshot(m) {
     for (const pr of G.props) if (!pr.dead && !seenP.has(pr.id)) {   /* lo rompio otro jugador */
       pr.dead = true;
       if (pr.kind === 'barrel') { spawnFX('boom', pr.x, pr.y, 1.4, 0.6); Snd.boom(); }
-      else spawnParts('dust', pr.x, pr.y, 0.5, 10, 2, 2, 0.6);
+      else if (pr.kind === 'extintor') nubeExtintor(pr.x, pr.y);
+      else { spawnParts('dust', pr.x, pr.y, 0.5, 10, 2, 2, 0.6);
+             spawnParts('chip', pr.x, pr.y, 0.4, 5, 2, 1.8, 0.8); }
     }
     for (const a of m.pr) {
       if (G.props.some(o=>o.id===a[0])) continue;
