@@ -3922,7 +3922,7 @@ const ITEMS = {
    ===================================================================== */
 const G = {
   state:'menu',                 // menu | lobby | run | upgrade | cine | end
-  room:0, seed:0, roomState:'fight', portalOn:false, cleared:0,
+  room:0, roomState:'fight', portalOn:false,
   players:new Map(),            // id -> jugador (incluido el local)
   meId:'', hostId:'', isHost:false,
   enemies:[], projectiles:[], items:[], pools:[], parts:[], fx:[], motes:[], props:[],
@@ -3931,6 +3931,7 @@ const G = {
   msgs:[], time:0, kills:0, startedAt:0,
   bossRef:null, cineT:0, flowT:0, netT:0, seq:0, over:false, win:false, hitStop:0,
   dmgNums:[], feed:[], combo:0, comboT:0, decals:[], holes:[], flick:0, flickT:2, mod:null,
+  /* flick: bajon de luz momentaneo, solo en las salas a oscuras */
   frames:0, heads:0
 };
 const me = () => G.players.get(G.meId);
@@ -4100,19 +4101,6 @@ function gridLight(x, y) {
   const i = gy*LGW + gx, v = LGRID[i];
   lightWarm = v > 0 ? LGWARM[i]/v : 1;
   return v > 1.7 ? 1.7 : v;
-}
-function lightAt(x, y) {                                /* aporte de luz 0..1.7 en un punto */
-  const n = LA.length; if (!n) return 0;
-  let s = 0, w = 0;
-  for (let i=0;i<n;i++) {
-    const l = LA[i];
-    const dx = x-l.x, dy = y-l.y, d2 = dx*dx+dy*dy;
-    if (d2 >= l.rr) continue;
-    const k = 1 - Math.sqrt(d2)*l.ir, c = k*k*l.k;
-    s += c; w += c*l.warm;
-  }
-  lightWarm = s > 0 ? w/s : 1;
-  return s > 1.7 ? 1.7 : s;
 }
 function dmgNumber(x, y, val, crit, head) {            /* cifra flotante sobre el objetivo */
   if (G.dmgNums.length > 26) G.dmgNums.shift();
@@ -5812,7 +5800,7 @@ function spawnRoomEnemies() {
   }
 }
 function startRoom(n, seed) {
-  G.room = n; G.seed = seed;
+  G.room = n;
   G.mod = rollModifier(n, seed);
   genRoom(n, seed);
   G.projectiles.length = 0; G.items.length = 0; G.pools.length = 0;
@@ -6080,7 +6068,6 @@ function hordaTick(dt) {
 }
 function roomCleared() {
   G.roomState = 'cleared';
-  G.cleared++;
   if (G.upgOn && (UPGRADE_ROOMS.includes(G.room) || BOSS_ROOMS[G.room])) {
     /* todos eligen su mejora: el portal no se abre hasta que acaben */
     G.upgWait = new Set([...G.players.values()].map(q => q.id));
@@ -6555,7 +6542,7 @@ function renderWorld() {
   const p = cam(); if (!p) return;
   const horizon = H*0.5 + p.pitch, camZ = camHeight();
   lightK = p.flash > 0 ? clamp(1-p.flash*5, 0.35, 1) : 1;
-  if (G.flick > 0) lightK *= 1.35;                     /* bajon de luz momentaneo */
+  if (G.flick > 0) lightK *= 1 + G.flick*0.7;          /* bajon de luz momentaneo */
   fogMul = (G.mod && G.mod.fog) ? G.mod.fog : 1;
   prepLights(p.x, p.y);
   renderFloorCeiling(horizon);
@@ -9240,6 +9227,16 @@ function frame(now) {
       G.miniBanner.t -= dt;
       if (G.miniBanner.t <= 0) G.miniBanner = null;
     }
+    /* en un apagon los pocos fluorescentes que aguantan dan bajones */
+    if (G.mod && G.mod.id === 'blackout') {
+      G.flick = Math.max(0, (G.flick||0) - dt*3.2);
+      G.flickT = (G.flickT||0) - dt;
+      if (G.flickT <= 0) {
+        G.flickT = rnd(1.4, 4.5);
+        G.flick = rnd(0.25, 0.75);
+        Snd.tone(rnd(60,110), 0.09, 'square', 0.02, 40);
+      }
+    } else if (G.flick) G.flick = 0;
     if (G.armaBanner) {
       G.armaBanner.t -= dt;
       if (G.armaBanner.t <= 0) G.armaBanner = null;
