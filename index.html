@@ -3845,6 +3845,34 @@ const ITEM_SPR = {
     c.beginPath(); c.moveTo(W*0.5,H*0.22); c.lineTo(W*0.82,H*0.36); c.lineTo(W*0.76,H*0.70);
     c.lineTo(W*0.5,H*0.84); c.lineTo(W*0.24,H*0.70); c.lineTo(W*0.18,H*0.36); c.closePath();
     c.fillStyle='#3f7bd6'; c.fill(); c.strokeStyle='#bfe0ff'; c.lineWidth=3; c.stroke(); }),
+  /* cajas de municion especial */
+  fuego: () => sprite('it_fue',64,64,(c,W,H)=>{
+    roundRect(c,W*0.18,H*0.34,W*0.64,H*0.40,5,'#5a2a18');
+    c.fillStyle='#b8501f'; c.fillRect(W*0.18,H*0.30,W*0.64,H*0.09);
+    for(let i=0;i<4;i++){
+      const x=W*(0.26+i*0.14);
+      roundRect(c,x,H*0.42,W*0.08,H*0.22,2,'#e0a030');
+      c.fillStyle='#ff7a2a'; c.fillRect(x,H*0.42,W*0.08,H*0.07);
+    }
+    emojiTxt(c,'🔥',W*0.5,H*0.24,W*0.30); }),
+  perfora: () => sprite('it_per',64,64,(c,W,H)=>{
+    roundRect(c,W*0.18,H*0.34,W*0.64,H*0.40,5,'#28405a');
+    c.fillStyle='#3f6f96'; c.fillRect(W*0.18,H*0.30,W*0.64,H*0.09);
+    for(let i=0;i<4;i++){
+      const x=W*(0.26+i*0.14);
+      roundRect(c,x,H*0.42,W*0.08,H*0.22,2,'#c9d6e0');
+      c.fillStyle='#7fa8c8'; c.fillRect(x,H*0.42,W*0.08,H*0.06);
+    }
+    emojiTxt(c,'🎯',W*0.5,H*0.24,W*0.28); }),
+  disper: () => sprite('it_dis',64,64,(c,W,H)=>{
+    roundRect(c,W*0.18,H*0.34,W*0.64,H*0.40,5,'#4a3a18');
+    c.fillStyle='#9a7a28'; c.fillRect(W*0.18,H*0.30,W*0.64,H*0.09);
+    for(let i=0;i<3;i++){
+      const x=W*(0.28+i*0.18);
+      roundRect(c,x,H*0.42,W*0.11,H*0.22,3,'#c0392b');
+      c.fillStyle='#e0b84a'; c.fillRect(x,H*0.58,W*0.11,H*0.06);
+    }
+    emojiTxt(c,'✳️',W*0.5,H*0.24,W*0.28); }),
   /* vaso de la maquina de la sala de profesores */
   cafe: () => sprite('it_cafe',64,64,(c,W,H)=>{
     c.beginPath(); c.moveTo(W*0.30,H*0.32); c.lineTo(W*0.70,H*0.32);
@@ -3868,12 +3896,25 @@ const ITEM_SPR = {
     c.fillText('!', W*0.5, H*0.56);
     ellipse(c,W*0.72,H*0.26,W*0.11,H*0.11,'rgba(240,140,190,0.85)'); })
 };
+/* Cargadores especiales: se recogen, duran unos disparos y cambian como se
+   siente el arma. Solo uno a la vez; coger otro sustituye al anterior. */
+const ESPECIAL = {
+  fuego:  { id:'fuego',  ico:'🔥', name:'BALAS INCENDIARIAS', tiros:24,
+            desc:'Prenden al que tocan: daño por segundo durante 3 s.', col:'#ff7a2a' },
+  perfora:{ id:'perfora',ico:'🎯', name:'BALAS PERFORANTES',  tiros:20,
+            desc:'Atraviesan hasta tres enemigos en línea.', col:'#9fd0ff' },
+  disper: { id:'disper', ico:'✳️', name:'CARGA DE DISPERSIÓN', tiros:16,
+            desc:'Cada disparo sale triple, con más apertura.', col:'#e0b84a' }
+};
 const ITEMS = {
   bullets:{ amount:30, msg:'+30 BALAS' }, shells:{ amount:8, msg:'+8 CARTUCHOS' },
   nades:{ amount:1, msg:'+1 GRANADA' }, health:{ amount:30, msg:'+30 VIDA' }, armor:{ amount:30, msg:'+30 ARMADURA' },
   /* efectos temporales: no se acumulan, se renuevan */
   cafe:{ buff:'cafe', dur:14, msg:'☕ CAFÉ DE PROFESORES · +60% CADENCIA' },
-  chicle:{ buff:'chicle', dur:14, msg:'🍬 CHICLE · +30% VELOCIDAD Y ESQUIVA LIBRE' }
+  chicle:{ buff:'chicle', dur:14, msg:'🍬 CHICLE · +30% VELOCIDAD Y ESQUIVA LIBRE' },
+  fuego:{ esp:'fuego', msg:'🔥 BALAS INCENDIARIAS' },
+  perfora:{ esp:'perfora', msg:'🎯 BALAS PERFORANTES' },
+  disper:{ esp:'disper', msg:'✳️ CARGA DE DISPERSIÓN' }
 };
 
 /* =====================================================================
@@ -4383,6 +4424,7 @@ class Enemy {
     if (n) { this.summonedOnce = true; addMsg('📢 ' + def.name + ' INVOCA REFUERZOS', '#ff9f5c'); Snd.roar(); }
   }
   update(dt) {
+    if (this.fuego > 0) tickFuego(this, dt);
     if (!this.alive) {
       this.deadT += dt;
       if (this.def.quieto && this.deadT > 3.5) {         /* el muneco se vuelve a levantar */
@@ -4635,8 +4677,9 @@ function freeSpotNear(x, y, r) {
   return null;
 }
 function dropItem(x, y, rich) {
-  const table = rich ? ['health','armor','shells','bullets','nades','bullets','cafe','chicle']
-                     : ['bullets','bullets','shells','health','nades','cafe','chicle'];
+  const table = rich ? ['health','armor','shells','bullets','nades','bullets','cafe','chicle',
+                        'fuego','perfora','disper']
+                     : ['bullets','bullets','shells','health','nades','cafe','chicle','fuego','disper'];
   const kind = pick(table);
   const raro = rich || kind === 'armor' || kind === 'cafe' || kind === 'chicle';
   G.items.push({ id:entId++, kind, x:x+rnd(-0.3,0.3), y:y+rnd(-0.3,0.3), t:rnd(0,TAU), taken:false, raro });
@@ -4735,7 +4778,7 @@ function initLocal(p) {
   p.altHeld = false; p.burstLeft = 0; p.burstT = 0; p.burstAlt = 0; p.zoomT = 0; p.inBurst = 0;
   p.nadeCd = 0; p.nadeHeld = false;
   p.furia = 0; p.furiaT = 0; p.ultiHeld = false; p.ejecuciones = 0;
-  p.buffs = {};
+  p.buffs = {}; p.esp = null; p.espTiros = 0;
   p.stats = { dmg:0, disparos:0, aciertos:0, cabezas:0, bajas:0, ejec:0,
               paradas:0, furias:0, granadas:0, recibido:0, caidas:0 };
   p.parry = 0; p.parryCd = 0; p.parryOk = 0;
@@ -4948,7 +4991,19 @@ function fire(p, alt) {
   if (w.cross === 'shotgun') spread *= (1 - u.choke);
   if (w.cross === 'rifle') spread *= (1 + p.recoil*1.1);
   stat(p, 'disparos');
-  for (let i=0;i<w.pellets;i++) hitscan(p, p.ang + rnd(-spread, spread), w);
+  /* cargador especial: solo con armas de fuego y solo mientras queden tiros */
+  const esp = (p.weapon !== 0 && p.esp && p.espTiros > 0) ? p.esp : null;
+  if (esp) {
+    p.espTiros--;
+    if (p.espTiros <= 0) { addMsg('SE ACABA ' + ESPECIAL[p.esp].name, '#9aa0a6'); p.esp = null; }
+  }
+  const wDisparo = esp === 'perfora'
+    ? Object.assign({}, w, { perfora: Math.max(w.perfora||0, 3) })
+    : w;
+  const pellets = esp === 'disper' ? w.pellets*3 : w.pellets;
+  const disp = esp === 'disper' ? spread*2.2 + 0.05 : spread;
+  for (let i=0;i<pellets;i++)
+    hitscan(p, p.ang + rnd(-disp, disp), wDisparo, null, null, esp);
   if (w.zoom) p.zoomT = 0.34;                            /* la mira se cierra un instante */
   if (w.rafaga && !p.burstLeft && !p.inBurst) {          /* el resto de la rafaga sale sola */
     p.burstLeft = w.rafaga - 1; p.burstT = 0.065; p.burstAlt = 1;
@@ -5077,6 +5132,29 @@ function tickParry(p, dt) {
     }
   }
 }
+/* fuego pegado: quema durante unos segundos a quien lo lleva */
+function prender(e, byId) {
+  if (!e || !e.alive) return;
+  e.fuego = 3.0; e.fuegoBy = byId;
+  if (!e.fuegoT) e.fuegoT = 0;
+}
+function tickFuego(e, dt) {
+  if (!e.fuego || e.fuego <= 0) return;
+  e.fuego -= dt;
+  if (Math.random() < dt*26)
+    spawnParts('spark', e.x + rnd(-0.25,0.25), e.y + rnd(-0.25,0.25),
+               rnd(0.2, e.scaleY*0.9), 1, 0.4, 1.4, 0.32);
+  if (LIGHTS.length < 32 && Math.random() < dt*7) addLight(e.x, e.y, 3.4, 0.42, 0.14, 1);
+  e.fuegoT -= dt;
+  if (e.fuegoT <= 0) {
+    e.fuegoT = 0.45;
+    const d = 7;
+    e.hurt(d, e.fuegoBy);
+    dmgNumber(e.x, e.y, d, false);
+    if (G.isHost || !NET.online) NET.send({ t:'edmg', id:e.id, dmg:d, by:e.fuegoBy });
+  }
+  if (e.fuego <= 0) e.fuego = 0;
+}
 /* estela luminosa del disparo, del canon al impacto */
 function trazador(p, x0, y0, x1, y1, kind) {
   if (!G.trazas) G.trazas = [];
@@ -5088,7 +5166,7 @@ function trazador(p, x0, y0, x1, y1, kind) {
                   x1, y1, z1: 0.5 + (p.z||0), t: 0, life: kind === 'shotgun' ? 0.07 : 0.11,
                   gordo: kind === 'shotgun' ? 0.5 : 1 });
 }
-function hitscan(p, ang, w, salta, mengua) {
+function hitscan(p, ang, w, salta, mengua, esp) {
   const dx = Math.cos(ang), dy = Math.sin(ang);
   const wallD = rayWall(p.x, p.y, dx, dy, w.range);
   let best = null, bestT = wallD, bestAlly = null;
@@ -5184,10 +5262,11 @@ function hitscan(p, ang, w, salta, mengua) {
     /* la furia se llena con el dano hecho, y mas si es a la cabeza */
     cargarFuria(p, clamp(dmg*0.075, 0, 9) * (head ? 1.6 : 1) * (best.alive ? 1 : 1.8));
     NET.send({ t:'edmg', id:best.id, dmg, by:p.id });
+    if (esp === 'fuego') prender(best, p.id);            /* incendiarias */
     if (w.perfora) {                                    /* la posta sigue de largo */
       const s2 = salta || new Set();
       s2.add(best.id);
-      if (s2.size <= w.perfora) hitscan(p, ang, w, s2, (mengua||1)*0.62);
+      if (s2.size <= w.perfora) hitscan(p, ang, w, s2, (mengua||1)*0.62, esp);
     }
   } else {
     spawnFX('spark', hx-dx*0.05, hy-dy*0.05, 0.3, 0.2);
@@ -5538,7 +5617,13 @@ function updateLocal(p, dt) {
     if (dist2(it.x,it.y,p.x,p.y) > 0.4) continue;
     const d = ITEMS[it.kind];
     let ok = false;
-    if (d.buff) { p.buffs = p.buffs || {}; p.buffs[d.buff] = d.dur; ok = true; Snd.drink(); }
+    if (d.esp) {                                        /* cargador especial */
+      const e = ESPECIAL[d.esp];
+      p.esp = d.esp; p.espTiros = e.tiros;
+      ok = true; Snd.reloadIn();
+      addMsg(e.ico + ' ' + e.name + ' · ' + e.tiros + ' TIROS · ' + e.desc, e.col);
+    }
+    else if (d.buff) { p.buffs = p.buffs || {}; p.buffs[d.buff] = d.dur; ok = true; Snd.drink(); }
     else if (it.kind === 'health') { if (p.hp < p.maxhp) { p.hp = Math.min(p.maxhp, p.hp+d.amount); ok = true; } }
     else if (it.kind === 'armor') { if (p.armor < 100) { p.armor = Math.min(100, p.armor+d.amount); ok = true; } }
     else { if (p.ammo[it.kind] < p.maxAmmo[it.kind]) { p.ammo[it.kind] = Math.min(p.maxAmmo[it.kind], p.ammo[it.kind]+d.amount); ok = true; } }
@@ -6606,6 +6691,10 @@ function collectSprites() {
       list.push({ x:e.x, y:e.y, tex:FX.galon(), sx:sx*0.42, sy:sx*0.42, anchor:'floor',
                   lift: e.scaleY*1.02 + 0.05*Math.sin(G.time*2.6), flash:0, raw:true });
     }
+    if (e.alive && e.fuego > 0) {                       /* ardiendo */
+      list.push({ x:e.x, y:e.y, tex:FX.aura(), sx:sx*1.5, sy:sx*1.5, anchor:'floor', lift:0.02,
+                  flash:0, alpha:0.40 + 0.25*Math.sin(G.time*11), raw:true });
+    }
     if (e.alive && e.arenga > 0) {                      /* al que ha animado el delegado */
       list.push({ x:e.x, y:e.y, tex:FX.tele(), sx:sx*1.8, sy:sx*1.8, anchor:'floor', lift:0.03,
                   flash:0, alpha:0.30 + 0.18*Math.sin(G.time*9), raw:true });
@@ -7568,23 +7657,33 @@ function renderHUD() {
   const aw = Math.min(210*s, W*0.20);
   panel(x2, top+8*s, aw, barH-16*s);
   const w = WEAPONS[p.weapon];
-  bigText(w.ammo ? AMMO_LABEL[w.ammo] : 'CUERPO A CUERPO', x2+aw/2, top+26*s, (15*s)|0, '#c9b48a');
+  const conEsp = !!(p.esp && p.espTiros > 0);
+  bigText(w.ammo ? AMMO_LABEL[w.ammo] : 'CUERPO A CUERPO', x2+aw/2, top+24*s, (15*s)|0, '#c9b48a');
+  const yNum = conEsp ? 56 : 60;                        /* el cargador especial roba una linea */
   if (w.mag) {
     const magNow = p.mags[p.weapon], magCap = magSize(p, p.weapon);
     const low = magNow <= magCap*0.25;
-    bigText(String(magNow), x2+aw*0.40, top+62*s, (38*s)|0, low ? '#ff6b6b' : '#ffd45e', 'right');
-    bigText('/ ' + p.ammo[w.ammo], x2+aw*0.46, top+60*s, (20*s)|0, '#b8ae94', 'left');
+    bigText(String(magNow), x2+aw*0.40, top+yNum*s, (36*s)|0, low ? '#ff6b6b' : '#ffd45e', 'right');
+    bigText('/ ' + p.ammo[w.ammo], x2+aw*0.46, top+(yNum-2)*s, (19*s)|0, '#b8ae94', 'left');
     if (p.reloadT > 0) {
       const k = 1 - p.reloadT/p.reloadMax;
-      ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x2+14*s, top+68*s, aw-28*s, 6*s);
-      ctx.fillStyle='#6fb8ff'; ctx.fillRect(x2+14*s, top+68*s, (aw-28*s)*k, 6*s);
+      ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x2+14*s, top+(yNum+4)*s, aw-28*s, 5*s);
+      ctx.fillStyle='#6fb8ff'; ctx.fillRect(x2+14*s, top+(yNum+4)*s, (aw-28*s)*k, 5*s);
     }
   } else {
-    bigText(w.ammo ? String(p.ammo[w.ammo]) : '∞', x2+aw/2, top+62*s, (38*s)|0, '#ffd45e');
+    bigText(w.ammo ? String(p.ammo[w.ammo]) : '∞', x2+aw/2, top+yNum*s, (36*s)|0, '#ffd45e');
+  }
+  if (conEsp) {                                         /* cargador especial cargado */
+    const e = ESPECIAL[p.esp];
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x2+10*s, top+64*s, aw-20*s, 12*s);
+    ctx.fillStyle = e.col;
+    ctx.fillRect(x2+10*s, top+64*s, (aw-20*s)*clamp(p.espTiros/e.tiros,0,1), 12*s);
+    bigText(e.ico + ' ' + p.espTiros, x2+aw/2, top+73*s, (11*s)|0, '#12121a', 'center', false);
   }
   /* cantimplora y granadas comparten linea: la barra no da para dos */
-  bigText('🥤 '+p.canteen+'/'+p.canteenMax, x2+aw*0.28, top+88*s, (15*s)|0, '#8ce89b');
-  bigText('🧨 '+p.ammo.nades+' ·'+keyName(KEYS.nade), x2+aw*0.72, top+88*s, (13*s)|0,
+  bigText('🥤 '+p.canteen+'/'+p.canteenMax, x2+aw*0.28, top+89*s, (15*s)|0, '#8ce89b');
+  bigText('🧨 '+p.ammo.nades+' ·'+keyName(KEYS.nade), x2+aw*0.72, top+89*s, (13*s)|0,
           (p.nadeCd||0) > 0 ? '#6b6155' : '#ffb347');
   /* arma y ranuras */
   x2 += aw + pad;
@@ -8967,6 +9066,8 @@ const AYUDA = [
   { titulo:'SOBREVIVIR', filas:[
     ['heal','<b>Cantimplora</b>: te cura, y las cargas se reponen al entrar en cada sala.'],
     [null,'<b>Barriles</b> explotan, <b>extintores</b> sueltan una nube en la que no te ven, <b>pupitres</b> hacen de parapeto y las <b>taquillas</b> guardan botín.'],
+    [null,'<b>Cargadores especiales</b>: incendiarias (queman 3 s), perforantes (atraviesan tres) y dispersión (cada disparo sale triple). Duran unos tiros y solo puedes llevar uno.'],
+    [null,'<b>Café</b> y <b>chicle</b> dan 14 segundos de más cadencia o más velocidad con esquiva gratis.'],
     [null,'<b>Delegado de clase</b>: no dispara pero acelera a los suyos. Cállalo primero.'],
     [null,'Cada 5 salas y tras cada jefe eliges una <b>mejora</b>: se acumulan durante la run y se pierden al morir.'],
     [null,'La <b>semilla</b> de la sala de espera fija la partida: con el mismo código salen las mismas salas en el mismo orden. Al terminar se ve la que te tocó.'],
