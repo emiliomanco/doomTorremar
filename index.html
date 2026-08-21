@@ -834,11 +834,20 @@ const Snd = {
   machete(){ this.noise(0.16,0.10,3200,0.6); this.tone(700,0.10,'triangle',0.04,180);
     setTimeout(()=>this.tone(1100,0.05,'sine',0.03,600),40); },
   glock(){ this.noise(0.09,0.22,2600,1.6); this.tone(300,0.10,'square',0.07,80);
-    this.tone(130,0.16,'sine',0.09,44); setTimeout(()=>this.tone(1800,0.03,'square',0.02,1200),55); },
+    this.tone(130,0.16,'sine',0.09,44); setTimeout(()=>this.tone(1800,0.03,'square',0.02,1200),55);
+    setTimeout(()=>this.noise(0.22,0.035,320,0.7),70); },        /* cola del pasillo */
   m16(){ this.noise(0.06,0.18,3400,1.8); this.tone(460,0.05,'square',0.05,150);
-    this.tone(120,0.10,'sine',0.07,50); },
+    this.tone(120,0.10,'sine',0.07,50);
+    setTimeout(()=>this.noise(0.16,0.025,280,0.7),60); },
   shotgun(){ this.noise(0.36,0.32,1600,2.2); this.tone(105,0.28,'sawtooth',0.12,34);
-    this.tone(58,0.34,'sine',0.10,26); setTimeout(()=>this.noise(0.18,0.08,600,1),120); },
+    this.tone(58,0.34,'sine',0.10,26); setTimeout(()=>this.noise(0.18,0.08,600,1),120);
+    setTimeout(()=>this.noise(0.40,0.05,220,0.8),160); },
+  /* impactos: cada material suena distinto */
+  golpeLadrillo(){ this.noise(0.08,0.09,1500,1.2); this.tone(180,0.05,'square',0.03,90); },
+  golpeMetal(){ this.tone(1900,0.05,'square',0.05,900); this.noise(0.06,0.05,5200,2);
+    setTimeout(()=>this.tone(2600,0.04,'triangle',0.03,1400),25); },
+  golpeMadera(){ this.noise(0.10,0.08,900,0.9); this.tone(240,0.07,'triangle',0.04,120); },
+  golpeCristal(){ this.tone(2400,0.07,'triangle',0.05,1600); this.noise(0.12,0.05,6000,2.4); },
   throwN(){ this.tone(240,0.16,'triangle',0.07,520); },
   pin(){ this.tone(1400,0.05,'square',0.05,900); },
   boom(){ this.noise(0.9,0.34,900,3); this.tone(65,0.65,'sine',0.16,24); },
@@ -3150,6 +3159,20 @@ function partRot(kind, f) {
   });
 }
 const FX = {
+  /* galon flotante sobre los reforzados */
+  galon: () => sprite('fx_galon', 64, 64, (c,W,H)=>{
+    c.fillStyle = '#ffd45e';
+    c.beginPath();
+    c.moveTo(W*0.5, H*0.16);
+    for (let i=1;i<10;i++) {
+      const a = -Math.PI/2 + i*Math.PI/5, r = (i%2 ? 0.16 : 0.34);
+      c.lineTo(W*0.5 + Math.cos(a)*W*r, H*0.5 + Math.sin(a)*H*r);
+    }
+    c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(90,60,10,0.8)'; c.lineWidth = 3; c.stroke();
+    c.fillStyle = 'rgba(255,240,180,0.55)';
+    c.beginPath(); c.arc(W*0.42, H*0.42, W*0.07, 0, TAU); c.fill();
+  }),
   /* nube de polvo seco del extintor: bolas blandas y claras */
   nube: (v) => sprite('fx_nube'+v, 160, 128, (c,W,H)=>{
     const R = (x,y,r,a) => {
@@ -3589,6 +3612,7 @@ function addHole(x, y, z, kind, size) {                  /* impacto o salpicadur
     spawnParts('spark', x, y, z, 3, 1.5, 1.4, 0.16);
     if (Math.random() < 0.55) spawnParts('chip', x, y, z, 2, 1.1, 1.0, 0.55);
     if (LIGHTS.length < 30) addLight(x, y, 2.2, 0.32, 0.06);
+    if (Math.random() < 0.5) Snd.at(x, y).golpeLadrillo();
   }
 }
 /* busca la pared mas cercana en 8 direcciones y le pega una salpicadura */
@@ -3678,7 +3702,7 @@ function updateParts(dt) {
   /* el polvo en suspension acompana a cada pantalla, no solo a la del J1 */
   const ojos = localesVivos();
   const cerca = ojos.length ? ojos : [me()].filter(Boolean);
-  const tope = 30 * Math.max(1, cerca.length);
+  const tope = 30 * clamp(cerca.length, 1, 2);
   if (cerca.length && G.motes.length < tope) for (let i=G.motes.length;i<tope;i++) {
     const p = cerca[i % cerca.length];
     G.motes.push({ x:p.x+rnd(-7,7), y:p.y+rnd(-7,7), z:rnd(0.15,1.05),
@@ -5007,7 +5031,12 @@ function hurtProp(pr, dmg, fromId) {
   if (pr.dead) return;
   pr.hp -= dmg; pr.flash = 0.14;
   spawnParts('dust', pr.x, pr.y, 0.4, 3, 1, 1.2, 0.4);
-  if (pr.hp > 0) { Snd.tone(220,0.05,'square',0.04,120); return; }
+  if (pr.hp > 0) {                                      /* suena a lo que esta hecho */
+    const s = Snd.at(pr.x, pr.y);
+    if (pr.kind === 'taquilla' || pr.kind === 'extintor' || pr.kind === 'barrel') s.golpeMetal();
+    else s.golpeMadera();
+    return;
+  }
   pr.dead = true;
   const d = PROPS[pr.kind];
   if (d.boom) {
@@ -5820,9 +5849,11 @@ function collectSprites() {
       list.push({ x:e.x, y:e.y, tex:FX.tele(), sx:e.scaleX*(1.4+k*1.9), sy:e.scaleX*(1.4+k*1.9),
                   anchor:'floor', lift:0.02, flash:0, alpha:0.35+0.45*k, raw:true });
     }
-    if (e.alive && e.elite) {                           /* aura del elite */
+    if (e.alive && e.elite) {                           /* aura y galon del elite */
       list.push({ x:e.x, y:e.y, tex:FX.aura(), sx:sx*2.1, sy:sx*2.1, anchor:'floor', lift:0.02,
                   flash:0, alpha:0.55 + 0.2*Math.sin(G.time*4), raw:true });
+      list.push({ x:e.x, y:e.y, tex:FX.galon(), sx:sx*0.42, sy:sx*0.42, anchor:'floor',
+                  lift: e.scaleY*1.02 + 0.05*Math.sin(G.time*2.6), flash:0, raw:true });
     }
     if (e.alive && e.arenga > 0) {                      /* al que ha animado el delegado */
       list.push({ x:e.x, y:e.y, tex:FX.tele(), sx:sx*1.8, sy:sx*1.8, anchor:'floor', lift:0.03,
@@ -5842,11 +5873,15 @@ function collectSprites() {
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
   }
   for (const q of G.pools) list.push({ x:q.x, y:q.y, tex:FX.pool(), sx:q.r*2, sy:q.r*0.55, anchor:'floor', lift:0.02, flash:0, alpha:0.9, raw:true });
-  if (G.nubes) for (const n of G.nubes) {               /* nube del extintor */
+  const ojoN = cam();
+  if (G.nubes && ojoN) for (const n of G.nubes) {       /* nube del extintor */
+    const dN = dist2(n.x, n.y, ojoN.x, ojoN.y);
+    if (dN > 900) continue;                              /* de lejos no se pinta */
     const k = clamp(n.t/n.life, 0, 1);
     const crece = clamp(n.t/0.55, 0.35, 1);
     const a = k < 0.10 ? k/0.10 : (1 - (k-0.10)/0.90)*0.72 + 0.06;
-    for (let i=0;i<3;i++) {                              /* tres capas girando lento */
+    const capas = dN > 200 ? 1 : 2;                      /* de cerca, dos capas */
+    for (let i=0;i<capas;i++) {
       const ang = G.time*0.35 + i*2.1;
       const rr = i === 0 ? 0 : n.r*0.34;
       list.push({ x:n.x+Math.cos(ang)*rr, y:n.y+Math.sin(ang)*rr,
