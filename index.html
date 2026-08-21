@@ -359,6 +359,11 @@
         <select id="sel-upg"><option value="1">Activadas</option><option value="0">Desactivadas</option></select></span>
       <span class="opt" id="ff-label"><span class="muted">FUEGO AMIGO</span>
         <select id="sel-ff"><option value="0">Desactivado</option><option value="1">Activado</option></select></span>
+      <span class="opt"><span class="muted">SEMILLA</span>
+        <input id="sel-seed" maxlength="6" placeholder="al azar"
+               title="Hasta 6 letras o números: la misma semilla da la misma partida"
+               style="width:92px;font-family:'Courier New',monospace;text-transform:uppercase">
+        <button id="btn-seed-copy" title="Copiar la semilla de la última partida">⧉</button></span>
     </div>
     <div class="lbar">
       <span class="row" id="char-locales" style="gap:6px;width:auto"></span>
@@ -5769,7 +5774,7 @@ function lanzarOleada() {
   if (G.ola > 1 && G.ola % 10 === 1) {
     const guardaH = G.horda, guardaO = G.ola, guardaF = G.olaFase;
     G.mod = MODIFIERS[0];
-    startRoom(1 + ((G.ola/10)|0)*4, (Math.random()*1e9)|0);
+    startRoom(1 + ((G.ola/10)|0)*4, semillaDeSala(100 + G.ola));
     G.horda = guardaH; G.ola = guardaO; G.olaFase = guardaF;
     G.roomState = 'fight'; G.portalOn = false;
     G.enemies.length = 0;
@@ -5898,9 +5903,12 @@ function openPortalAfterUpgrades() {
   addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b');
   Snd.door();
 }
+/* cada sala saca su semilla de la de la run: con el mismo codigo salen las
+   mismas salas, en el mismo orden y con los mismos modificadores */
+function semillaDeSala(n) { return (((G.semilla >>> 0) ^ (n * 0x9e3779b9)) >>> 0); }
 function nextRoom() {
   if (G.room >= TOTAL_ROOMS) { endRun(true); return; }
-  const n = G.room + 1, seed = (Math.random()*1e9)|0;
+  const n = G.room + 1, seed = semillaDeSala(n);
   NET.send({ t:'room', n, seed });
   startRoom(n, seed);
 }
@@ -7664,6 +7672,7 @@ function renderHUD() {
    INTERFAZ (DOM): menus, lobby, keybinds, mejoras y final
    ===================================================================== */
 function showScreen(id) {
+  if (id) { $('cine').classList.remove('on'); if (G.state === 'cine') G.cineT = 0; }
   for (const el of document.querySelectorAll('.screen')) el.classList.remove('on');
   if (id) $(id).classList.add('on');
   document.body.classList.toggle('free', !!id);
@@ -8356,7 +8365,10 @@ function showEnd(win) {
         ((BEST.porDif[String(G.diff)]||{}).runs || 0)) + '</div>' +
     '<div class="muted">GLOBAL: sala ' + BEST.room + ' · ' + BEST.kills +
     ' bajas · ' + BEST.runs + ' runs · ' + Object.keys(BEST.medallas).length + '/' +
-    MEDALLAS.length + ' medallas</div>';
+    MEDALLAS.length + ' medallas</div>' +
+    '<div class="muted" style="margin-top:6px">SEMILLA DE ESTA PARTIDA: <b style="color:#9fe8ff;' +
+    'font-family:\'Courier New\',monospace">' + textoDeSemilla(G.semilla||0) + '</b>' +
+    ' · escríbela en la sala para repetirla</div>';
   showScreen('scr-end');
 }
 let keysReturn = 'scr-main';
@@ -8423,9 +8435,25 @@ function backToMenu() {
   showScreen('scr-main');
 }
 /* --------------------------- inicio de run --------------------------- */
+/* La semilla se ensena en base 36 para que quepa en un codigo corto y se
+   pueda pasar de viva voz. Vacio = al azar. */
+function semillaDeTexto(txt) {
+  /* seis caracteres en base 36 caben justos en 32 bits, asi que el codigo
+     que se escribe es el mismo que luego se ensena */
+  const t = String(txt || '').trim().toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6);
+  if (!t) return null;
+  const n = parseInt(t, 36);
+  return isFinite(n) ? (n >>> 0) : null;
+}
+function textoDeSemilla(n) { return ((n >>> 0).toString(36)).toUpperCase(); }
+function semillaElegida() {
+  const s = semillaDeTexto($('sel-seed') ? $('sel-seed').value : '');
+  return s === null ? ((Math.random()*2176782335)|0) >>> 0 : s;
+}
 function beginRun(room, seed, horda) {
   G.state = 'run'; G.over = false; G.kills = 0; G.heads = 0; G.time = 0;
   G.horda = horda ? 1 : 0; G.ola = 0; G.olaT = 0; G.olaFase = '';
+  G.semilla = seed >>> 0;
   G.nPlayers = Math.max(1, G.players.size);
   const yo = G.players.get(G.meId);                     /* solo, anfitrion o cliente */
   if (yo && !yo.isLocal) { yo.isLocal = true; yo.slot = 0; yo.pad = null; }
@@ -8441,7 +8469,7 @@ function startRunHost() {
   G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
   const hd = parseInt($('sel-modo').value,10) ? 1 : 0;
   G.nPlayers = G.players.size;
-  const seed = (Math.random()*1e9)|0;
+  const seed = semillaElegida();
   NET.send({ t:'start', room:0, seed, diff:G.diff, ff:G.ff, up:G.upgOn, n:G.nPlayers, hd });
   beginRun(0, seed, hd);
 }
@@ -8564,7 +8592,7 @@ function soloRun() {
   G.ff = parseInt($('sel-ff').value,10) || 0;
   G.nPlayers = G.players.size;                          /* en local cuentan todos */
   showScreen(null);
-  beginRun(0, (Math.random()*1e9)|0, parseInt($('sel-modo').value,10) ? 1 : 0);
+  beginRun(0, semillaElegida(), parseInt($('sel-modo').value,10) ? 1 : 0);
 }
 /* partida abierta: sin servidor de emparejamiento, se prueban unos codigos
    publicos conocidos; si ninguno responde, se abre el primero libre */
@@ -8812,6 +8840,7 @@ const AYUDA = [
     [null,'<b>Barriles</b> explotan, <b>extintores</b> sueltan una nube en la que no te ven, <b>pupitres</b> hacen de parapeto y las <b>taquillas</b> guardan botín.'],
     [null,'<b>Delegado de clase</b>: no dispara pero acelera a los suyos. Cállalo primero.'],
     [null,'Cada 5 salas y tras cada jefe eliges una <b>mejora</b>: se acumulan durante la run y se pierden al morir.'],
+    [null,'La <b>semilla</b> de la sala de espera fija la partida: con el mismo código salen las mismas salas en el mismo orden. Al terminar se ve la que te tocó.'],
     [null,'En cooperativo, quien cae se levanta acercándose y quedándose quieto 4 segundos. Las flechas del borde señalan a los caídos.'],
     ['map','<b>Mapa</b> de la sala mientras lo mantienes pulsado.']
   ]}
@@ -8915,6 +8944,12 @@ $('btn-keys-reset').onclick = () => {
 };
 $('btn-fullscreen').onclick = () => { alternarPantallaCompleta(); setTimeout(avisoTeclas, 300); };
 $('sel-modo').onchange = () => renderLobby();
+$('btn-seed-copy').onclick = () => {
+  const t = textoDeSemilla(G.semilla || 0);
+  $('sel-seed').value = t;
+  try { navigator.clipboard && navigator.clipboard.writeText(t); } catch(e) {}
+  addMsg('SEMILLA ' + t + ' COPIADA', '#9fe8ff');
+};
 $('btn-start').onclick = () => { if (NET.online) startRunHost(); else soloRun(); };
 /* abre la partida del sofa a otras PCs conservando a los que ya estan */
 $('btn-invitar').onclick = () => {
