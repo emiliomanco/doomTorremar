@@ -2591,7 +2591,17 @@ function figure(c, W, H, o) {
   const shW = W*(o.shoulders||0.62), torsoH = bodyH*0.56, legTop = bodyTop+torsoH;
   const skin = o.skin, skinD = shade(o.skin, 0.72);
   const sw = o.swing || 0;
-  ellipse(c, cx, H-H*0.012, W*0.30, H*0.016, 'rgba(0,0,0,0.45)');
+  /* sombra bajo los pies: en degradado para que no sea una mancha dura */
+  {
+    const sy = H - H*0.010, srx = W*0.40, sry = H*0.026;
+    const g = c.createRadialGradient(cx, sy, 1, cx, sy, srx);
+    g.addColorStop(0, 'rgba(0,0,0,0.62)');
+    g.addColorStop(0.55, 'rgba(0,0,0,0.34)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.save(); c.translate(cx, sy); c.scale(1, sry/srx); c.translate(-cx, -sy);
+    c.fillStyle = g; c.beginPath(); c.arc(cx, sy, srx, 0, TAU); c.fill();
+    c.restore();
+  }
   /* piernas */
   const legW = shW*0.28, legH = H-legTop, legDX = sw*legW*0.55;
   const leg = (side,dx,short) => {
