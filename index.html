@@ -347,6 +347,8 @@
     <div class="empties" id="empty-list"></div>
     <div class="plist" id="lobby-list"></div>
     <div class="lbar" id="host-controls">
+      <span class="opt"><span class="muted">MODO</span>
+        <select id="sel-modo"><option value="0">50 salas</option><option value="1">Horda sin fin</option></select></span>
       <span class="opt"><span class="muted">DIFICULTAD</span><select id="sel-diff"></select></span>
       <span class="opt"><span class="muted">MEJORAS</span>
         <select id="sel-upg"><option value="1">Activadas</option><option value="0">Desactivadas</option></select></span>
@@ -541,14 +543,27 @@ try {
 function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
 /* marcas personales de la partida */
 /* BEST guarda la marca global y, en porDif, una por cada dificultad */
-const BEST = { room:0, kills:0, time:0, runs:0, porDif:{}, medallas:{} };
+const BEST = { room:0, kills:0, time:0, runs:0, porDif:{}, medallas:{}, horda:{} };
 try {
   const b = JSON.parse(localStorage.getItem('torremar.best') || 'null');
   if (b) Object.assign(BEST, b);
   if (!BEST.porDif) BEST.porDif = {};
   if (!BEST.medallas) BEST.medallas = {};
+  if (!BEST.horda) BEST.horda = {};
 } catch (e) {}
 function saveBest() { try { localStorage.setItem('torremar.best', JSON.stringify(BEST)); } catch (e) {} }
+/* marca del modo horda: la mejor oleada por dificultad */
+function recordHorda(ola, kills, time, dif) {
+  const k = String(dif);
+  const d = BEST.horda[k] || (BEST.horda[k] = { ola:0, kills:0, time:0, runs:0 });
+  d.runs++;
+  let nuevo = false;
+  if (ola > d.ola) { d.ola = ola; nuevo = true; }
+  if (kills > d.kills) d.kills = kills;
+  if (time > d.time) d.time = time;
+  saveBest();
+  return nuevo;
+}
 function recordRun(room, kills, time, dif, gano) {
   BEST.runs++;
   let nuevo = false;
@@ -592,7 +607,11 @@ const MEDALLAS = [
   { id:'souls',    ico:'🔥', name:'ALUMNO AVENTAJADO', desc:'Sala 20 en Souls-Like o superior',
     ok:(st,ctx)=> ctx.sala >= 20 && ctx.dif >= 4 },
   { id:'imposible',ico:'👑', name:'MATRÍCULA DE HONOR', desc:'Sala 15 en Imposible',
-    ok:(st,ctx)=> ctx.sala >= 15 && ctx.dif === DIFF_IMPOSIBLE }
+    ok:(st,ctx)=> ctx.sala >= 15 && ctx.dif === DIFF_IMPOSIBLE },
+  { id:'marea',    ico:'🌊', name:'CONTRA LA MAREA',    desc:'Oleada 10 en modo horda',
+    ok:(st,ctx)=> ctx.horda && ctx.ola >= 10 },
+  { id:'rompeolas',ico:'🗿', name:'ROMPEOLAS',          desc:'Oleada 25 en modo horda',
+    ok:(st,ctx)=> ctx.horda && ctx.ola >= 25 }
 ];
 /* devuelve las que se han ganado en esta run y marca las nuevas */
 function medallasDeRun(st, ctx) {
@@ -3674,6 +3693,7 @@ const G = {
   meId:'', hostId:'', isHost:false,
   enemies:[], projectiles:[], items:[], pools:[], parts:[], fx:[], motes:[], props:[],
   diff:2, ff:0, upgOn:1, local:0, nPlayers:1,
+  horda:0, ola:0, olaT:0, olaFase:'',   /* modo horda: numero de oleada y descanso */
   msgs:[], time:0, kills:0, startedAt:0,
   bossRef:null, cineT:0, flowT:0, netT:0, seq:0, over:false, win:false, hitStop:0,
   dmgNums:[], feed:[], combo:0, comboT:0, decals:[], holes:[], flick:0, flickT:2, mod:null,
@@ -5479,7 +5499,7 @@ function startRoom(n, seed) {
     addMsg('SALA 0 · ZONA SEGURA · ENTRA EN EL CÍRCULO PARA EMPEZAR', '#8ce89b');
     addMsg('🎯 HAY MUÑECOS PARA PROBAR ARMAS: SE LEVANTAN SOLOS', '#9fd0ff'); }
   else if (bossKey) startCinematic(BOSSES[bossKey].name, 'SALA ' + n, BOSSES[bossKey]);
-  else addMsg('SALA ' + n + ' / ' + TOTAL_ROOMS + ' · ' + G.enemies.length + ' ENEMIGOS', '#9fd0ff');
+  else if (!G.horda) addMsg('SALA ' + n + ' / ' + TOTAL_ROOMS + ' · ' + G.enemies.length + ' ENEMIGOS', '#9fd0ff');
   if (G.mod && G.mod.id !== 'none') {
     addMsg('⚠ ' + G.mod.name + ' · ' + G.mod.desc, '#ffb347');
     G.modBanner = 2.6;
@@ -5520,7 +5540,7 @@ function startCinematic(name, sub, def) {
 const EXIT_R = 1.55, EXIT_HOLD = 2.0;
 /* el avance lo decide el anfitrion: todos los vivos dentro del circulo 2 s */
 function updateExitCircle(dt) {
-  if (!G.portalOn) { G.exitT = 0; return; }
+  if (G.horda || !G.portalOn) { G.exitT = 0; return; }
   const alive = [...G.players.values()].filter(q => q.alive && !q.down);
   if (!alive.length) { G.exitT = 0; return; }
   const inside = alive.filter(q => dist(q.x, q.y, MAP.exit.x, MAP.exit.y) < EXIT_R);
@@ -5560,6 +5580,121 @@ function siguienteOleada() {
   }
   refreshBossRef();
 }
+/* =====================================================================
+   MODO HORDA
+   Una sola arena y oleadas que no paran. Cada cinco, un minijefe; cada
+   diez, un jefe. Entre oleada y oleada hay unos segundos de respiro y
+   cada tres se reparte mejora.
+   ===================================================================== */
+const HORDA_DESCANSO = 7.0;
+function empezarHorda(seed) {
+  G.horda = 1; G.ola = 0; G.olaT = 0; G.olaFase = 'descanso';
+  G.mod = MODIFIERS[0];                                  /* sin modificador de sala */
+  startRoom(1, seed);                                    /* la arena, una sola vez */
+  G.roomState = 'fight'; G.portalOn = false;
+  G.enemies.length = 0;
+  G.olaT = 3.0;
+  addMsg('🌊 MODO HORDA · AGUANTA TODAS LAS OLEADAS QUE PUEDAS', '#9fd0ff');
+}
+function hordaPool(ola) {
+  const pool = ['runner','runner','shooter','shooter','brute'];
+  if (ola >= 2)  pool.push('tiza','patinete');
+  if (ola >= 3)  pool.push('becario','quimica');
+  if (ola >= 5)  pool.push('bedel','fisica');
+  if (ola >= 7)  pool.push('delegado','enfermera');
+  if (ola >= 10) pool.push('brute','bedel','patinete');
+  if (ola >= 14) pool.push('fisica','quimica','delegado');
+  return pool;
+}
+function lanzarOleada() {
+  G.ola++;
+  G.olaFase = 'pelea';
+  G.olaDur = 0; G.olaFuria = 0;
+  const dc = (DIFFS[G.diff] || DIFFS[DIFF_NORMAL]).count || 1;
+  const jug = clamp(G.nPlayers || 1, 1, MAX_PLAYERS);
+  const jefe = G.ola % 10 === 0, mini = !jefe && G.ola % 5 === 0;
+  G.enemies.length = 0;
+  const sitios = freeCells(MAP.spawn, 8);
+  if (jefe) {                                            /* uno de los cuatro, por turno */
+    const claves = Object.values(BOSS_ROOMS);
+    const turno = ((((G.ola / 10) | 0) - 1) % claves.length + claves.length) % claves.length;
+    const b = new Enemy(BOSSES[claves[turno]], MAP.w/2, 6.5, null);
+    G.enemies.push(b); G.bossRef = b;
+    startCinematic(b.def.name, 'OLEADA ' + G.ola, b.def);
+  } else {
+    if (mini) {
+      const k = pick(Object.keys(MINIBOSSES));
+      const sp = sitios.splice((Math.random()*sitios.length)|0, 1)[0] || MAP.exit;
+      const e = new Enemy(MINIBOSSES[k], sp.x, sp.y, null);
+      G.enemies.push(e); G.bossRef = e;
+      G.miniBanner = { def: MINIBOSSES[k], hp: Math.round(e.maxhp), t: 3.4 };
+      G.miniVisto = e.id;
+    } else G.bossRef = null;
+    const pool = hordaPool(G.ola);
+    const n = Math.max(4, Math.round((6 + G.ola*1.35 + (jug-1)*2.4) * dc));
+    const elite = clamp(0.05 + G.ola*0.012, 0, 0.35);
+    for (let i=0;i<n && sitios.length;i++) {
+      const sp = sitios.splice((Math.random()*sitios.length)|0, 1)[0];
+      const en = new Enemy(ENEMIES[pick(pool)], sp.x, sp.y, null);
+      const dureza = 1 + G.ola*0.045;                     /* van aguantando mas */
+      en.maxhp = Math.round(en.maxhp*dureza); en.hp = en.maxhp;
+      en.speed *= 1 + Math.min(0.35, G.ola*0.012);
+      if (Math.random() < elite) makeElite(en);
+      G.enemies.push(en);
+      spawnFX('flash', sp.x, sp.y, 0.7, 0.3);
+    }
+  }
+  addMsg('🌊 OLEADA ' + G.ola + (jefe ? ' · JEFE' : (mini ? ' · MINIJEFE' : '')) +
+         ' · ' + G.enemies.length + ' ENEMIGOS', jefe ? '#ff5c5c' : '#9fd0ff');
+  killFeed('🌊 OLEADA ' + G.ola, '#9fd0ff');
+  Snd.door();
+  buildFlows([...G.players.values()].filter(q=>!q.down));
+}
+function hordaTick(dt) {
+  if (!G.horda) return;
+  if (G.olaFase === 'descanso') {
+    G.olaT -= dt;
+    if (G.olaT <= 0) lanzarOleada();
+    return;
+  }
+  /* nadie se esconde eternamente: pasado el minuto y medio salen a por ti */
+  G.olaDur = (G.olaDur || 0) + dt;
+  if (G.olaDur > 75 && !G.olaFuria) {
+    G.olaFuria = 1;
+    let n = 0;
+    for (const e of G.enemies) {
+      if (!e.alive) continue;
+      e.arenga = 9999;                                   /* rapidos y agresivos */
+      if (e.def.keepMin) { e.def = Object.assign({}, e.def, { keepMin:0, keepMax:2.5 }); }
+      n++;
+    }
+    if (n) { addMsg('⚠ SE ACABÓ EL ESCONDITE: ' + n + ' VIENEN A POR TI', '#ff8a5c'); Snd.roar(); }
+  }
+  if (G.enemies.length && !G.enemies.some(e=>e.alive)) {
+    G.olaFase = 'descanso';
+    G.olaT = HORDA_DESCANSO;
+    G.olaDur = 0; G.olaFuria = 0;
+    G.bossRef = null;
+    /* recompensa: botin en el centro y, cada tres, mejora para todos */
+    const sitios = freeCells(MAP.spawn, 5);
+    for (let i=0;i<3 && sitios.length;i++) {
+      const sp = sitios.splice((Math.random()*sitios.length)|0, 1)[0];
+      dropItem(sp.x, sp.y, true);
+    }
+    for (const q of G.players.values()) if (q.isLocal && q.up) {
+      q.canteen = Math.min(q.canteenMax, q.canteen + 1);
+      q.armor = Math.min(100, q.armor + 10);
+    }
+    addMsg('OLEADA ' + G.ola + ' SUPERADA · ' + HORDA_DESCANSO.toFixed(0) + ' s DE RESPIRO', '#8ce89b');
+    Snd.pick();
+    if (G.upgOn && G.ola % 3 === 0 && G.ola > 0) {
+      G.upgWait = new Set([...G.players.values()].map(q => q.id));
+      G.upgT = 40;
+      NET.send({ t:'upgOpen' });
+      openUpgrades();
+    }
+  }
+}
 function roomCleared() {
   G.roomState = 'cleared';
   G.cleared++;
@@ -5583,6 +5718,7 @@ function markUpgradeDone(id) {
 }
 function openPortalAfterUpgrades() {
   G.upgWait = null; G.upgT = 0;
+  if (G.horda) { addMsg('SEGUIMOS · LLEGA LA SIGUIENTE OLEADA', '#8ce89b'); return; }
   G.portalOn = true;
   addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b');
   Snd.door();
@@ -5874,7 +6010,7 @@ function onNet(from, m) {
     case 'full': alert('La sala está llena.'); backToMenu(); break;
     case 'kicked': alert('El anfitrión te ha expulsado.'); backToMenu(); break;
     case 'start': G.diff = m.diff; G.ff = m.ff; G.upgOn = (m.up === undefined ? 1 : m.up);
-      G.nPlayers = m.n; beginRun(m.room, m.seed); break;
+      G.nPlayers = m.n; beginRun(m.room, m.seed, m.hd); break;
     case 'room': startRoom(m.n, m.seed); break;
     case 'world': if (!G.isHost) applySnapshot(m); break;
     case 'pstate': {
@@ -7125,7 +7261,8 @@ function renderHUD() {
   x2 += aw + pad;
   const ww = Math.max(150*s, W - x2 - pad);
   panel(x2, top+8*s, ww, barH-16*s);
-  bigText('SALA ' + G.room + ' / ' + TOTAL_ROOMS, x2+ww/2, top+21*s, (15*s)|0, '#9fd0ff');
+  bigText(G.horda ? 'OLEADA ' + G.ola : 'SALA ' + G.room + ' / ' + TOTAL_ROOMS,
+          x2+ww/2, top+21*s, (15*s)|0, '#9fd0ff');
   bigText(w.name, x2+ww/2, top+43*s, clamp(ww/(w.name.length*0.62), 12*s, 25*s)|0, '#ffe6a8');
   /* modo alternativo del arma en mano */
   const alt2 = ALT[p.weapon];
@@ -7171,7 +7308,12 @@ function renderHUD() {
     ctx.strokeStyle = boss ? 'rgba(224,25,25,0.85)' : 'rgba(180,150,90,0.55)';
     ctx.lineWidth = Math.max(1.5, 2*s);
     ctx.strokeRect(cxb, cy, cw, ch);
-    const etq = G.room === 0 ? 'ZONA SEGURA'
+    const etq = G.horda
+              ? (G.olaFase === 'descanso'
+                 ? (G.ola ? 'OLEADA ' + G.ola + ' SUPERADA · ' + Math.max(0, G.olaT).toFixed(1) + ' s'
+                          : 'PREPARADOS… ' + Math.max(0, G.olaT).toFixed(1) + ' s')
+                 : 'OLEADA ' + G.ola + (G.ola % 10 === 0 ? ' · JEFE' : (G.ola % 5 === 0 ? ' · MINIJEFE' : '')))
+              : G.room === 0 ? 'ZONA SEGURA'
               : (BOSS_ROOMS[G.room] ? 'SALA ' + G.room + ' · JEFE'
               : (G.upgOn && UPGRADE_ROOMS.includes(G.room) ? 'SALA ' + G.room + ' · BOTÍN'
               : 'SALA ' + G.room + ' / ' + TOTAL_ROOMS));
@@ -7420,15 +7562,20 @@ function renderLobby() {
   }
   $('btn-lobby-char').style.display = (mios.length > 1) ? 'none' : '';
   $('sel-upg').value = String(G.upgOn ? 1 : 0);
-  const sinMej = G.upgOn ? '' : ' · SIN MEJORAS: no habrá botín en las salas 5, 15, 25, 35 ni 45';
+  const modoH = $('sel-modo') && parseInt($('sel-modo').value,10) === 1;
+  const sinMej = G.upgOn ? '' : (modoH ? ' · SIN MEJORAS: no habrá botín entre oleadas'
+                                       : ' · SIN MEJORAS: no habrá botín en las salas 5, 15, 25, 35 ni 45');
   const pista = 'Pulsa cualquier botón de un mando libre para entrar (hasta 4 por equipo). El J1 va con teclado.';
-  $('lobby-hint').textContent = online
+  const pistaModo = modoH
+    ? 'MODO HORDA: una sola arena y oleadas que no paran. Minijefe cada 5, jefe cada 10 y mejora cada 3. '
+    : '';
+  $('lobby-hint').textContent = pistaModo + (online
     ? (mando ? 'Hasta 8 jugadores entre todas las PCs. ' + pista
              : 'Esperando a que el anfitrión inicie la run… Dificultad: ' + DIFFS[G.diff].name +
                (G.ff?' · fuego amigo ON':'') + ' · ' + pista) + sinMej
     : local
     ? pista + sinMej
-    : 'Partida en solitario. Elige dificultad y dale a START.' + sinMej;
+    : 'Partida en solitario. Elige dificultad y dale a START.' + sinMej);
   $('code').textContent = NET.code || (G.isHost ? '—' : 'CONECTADO');
   $('lobby-title').textContent = online
     ? 'SALA DE ESPERA · ' + G.players.size + '/' + MAX_PLAYERS +
@@ -7846,7 +7993,8 @@ function siguienteMejora() {
   if (!p) {                                             /* ya han elegido todos */
     showScreen(null);
     G.state = 'run';
-    if (!NET.online) { G.portalOn = true; addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b'); }
+    if (G.horda) addMsg('SEGUIMOS · LLEGA LA SIGUIENTE OLEADA', '#8ce89b');
+    else if (!NET.online) { G.portalOn = true; addMsg('SALA DESPEJADA · CRUZA EL PORTAL', '#8ce89b'); }
     else addMsg('ESPERANDO AL RESTO DEL EQUIPO…', '#9fd0ff');
     lockPointer();
     return;
@@ -7906,17 +8054,19 @@ function navegaMejoras() {
 }
 function showEnd(win) {
   const p = me();
-  const nuevoRecord = recordRun(G.room, G.kills, G.time, G.diff, win);
+  const nuevoRecord = G.horda
+    ? recordHorda(G.ola, G.kills, G.time, G.diff)
+    : recordRun(G.room, G.kills, G.time, G.diff, win);
   /* las medallas las gana el equipo: basta con que las saque uno */
-  const ctxMed = { sala:G.room, gano:win, dif:G.diff };
+  const ctxMed = { sala:G.room, gano:win, dif:G.diff, horda:!!G.horda, ola:G.ola };
   const hojas = localesVivos().map(q => q.stats).filter(Boolean);
   if (!hojas.length && p && p.stats) hojas.push(p.stats);
   const vistas = new Map();
   for (const h of hojas) for (const g of medallasDeRun(h, ctxMed))
     if (!vistas.has(g.m.id) || g.nueva) vistas.set(g.m.id, g);
   const gana = [...vistas.values()];
-  $('end-title').textContent = win ? '¡RUN COMPLETADA!' : 'RUN TERMINADA';
-  $('end-title').style.color = win ? '#7ee081' : '#d92b2b';
+  $('end-title').textContent = G.horda ? 'HORDA TERMINADA' : (win ? '¡RUN COMPLETADA!' : 'RUN TERMINADA');
+  $('end-title').style.color = win && !G.horda ? '#7ee081' : '#d92b2b';
   const mins = Math.floor((G.time)/60), secs = Math.floor(G.time%60);
   const locales = localesVivos();
   const fila = (q) => {
@@ -7940,7 +8090,7 @@ function showEnd(win) {
   };
   const filas = (locales.length ? locales : [p].filter(Boolean)).map(fila).join('');
   $('end-stats').innerHTML =
-    '<h2>SALA ' + G.room + ' / ' + TOTAL_ROOMS + '</h2>' +
+    '<h2>' + (G.horda ? 'OLEADA ' + G.ola : 'SALA ' + G.room + ' / ' + TOTAL_ROOMS) + '</h2>' +
     '<div class="muted">BAJAS DEL EQUIPO: ' + G.kills +
       ' · TIEMPO: ' + mins + ':' + String(secs).padStart(2,'0') +
       ' · DIFICULTAD: ' + DIFFS[G.diff].name + (G.upgOn ? '' : ' · SIN MEJORAS') + '</div>' +
@@ -7956,11 +8106,14 @@ function showEnd(win) {
           (g.nueva ? '<span class="mn">NUEVA</span>' : '') + '</div>').join('') + '</div>'
       : '') +
     (nuevoRecord ? '<div style="color:#ffd45e;margin-top:6px">★ NUEVO RÉCORD PERSONAL</div>' : '') +
-    '<div class="muted" style="margin-top:8px">MEJOR MARCA EN ' + DIFFS[G.diff].name + ': sala ' +
-      ((BEST.porDif[String(G.diff)]||{}).room || 0) +
-      ' · ' + ((BEST.porDif[String(G.diff)]||{}).ganadas || 0) + ' completada' +
-      (((BEST.porDif[String(G.diff)]||{}).ganadas || 0) === 1 ? '' : 's') + ' de ' +
-      ((BEST.porDif[String(G.diff)]||{}).runs || 0) + '</div>' +
+    '<div class="muted" style="margin-top:8px">' + (G.horda
+      ? 'MEJOR OLEADA EN ' + DIFFS[G.diff].name + ': ' + ((BEST.horda[String(G.diff)]||{}).ola || 0) +
+        ' · ' + ((BEST.horda[String(G.diff)]||{}).runs || 0) + ' hordas jugadas'
+      : 'MEJOR MARCA EN ' + DIFFS[G.diff].name + ': sala ' +
+        ((BEST.porDif[String(G.diff)]||{}).room || 0) +
+        ' · ' + ((BEST.porDif[String(G.diff)]||{}).ganadas || 0) + ' completada' +
+        (((BEST.porDif[String(G.diff)]||{}).ganadas || 0) === 1 ? '' : 's') + ' de ' +
+        ((BEST.porDif[String(G.diff)]||{}).runs || 0)) + '</div>' +
     '<div class="muted">GLOBAL: sala ' + BEST.room + ' · ' + BEST.kills +
     ' bajas · ' + BEST.runs + ' runs · ' + Object.keys(BEST.medallas).length + '/' +
     MEDALLAS.length + ' medallas</div>';
@@ -8030,25 +8183,27 @@ function backToMenu() {
   showScreen('scr-main');
 }
 /* --------------------------- inicio de run --------------------------- */
-function beginRun(room, seed) {
+function beginRun(room, seed, horda) {
   G.state = 'run'; G.over = false; G.kills = 0; G.heads = 0; G.time = 0;
+  G.horda = horda ? 1 : 0; G.ola = 0; G.olaT = 0; G.olaFase = '';
   G.nPlayers = Math.max(1, G.players.size);
   const yo = G.players.get(G.meId);                     /* solo, anfitrion o cliente */
   if (yo && !yo.isLocal) { yo.isLocal = true; yo.slot = 0; yo.pad = null; }
   for (const q of localesVivos()) { initLocal(q); q.alive = true; q.down = false; }
   for (const q of G.players.values()) { q.alive = true; q.down = false; q.hp = q.maxhp || 100; }
   showScreen(null);
-  startRoom(room, seed);
+  if (G.horda) empezarHorda(seed); else startRoom(room, seed);
   lockPointer();
 }
 function startRunHost() {
   G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
   G.ff = parseInt($('sel-ff').value,10) || 0;
   G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
+  const hd = parseInt($('sel-modo').value,10) ? 1 : 0;
   G.nPlayers = G.players.size;
   const seed = (Math.random()*1e9)|0;
-  NET.send({ t:'start', room:0, seed, diff:G.diff, ff:G.ff, up:G.upgOn, n:G.nPlayers });
-  beginRun(0, seed);
+  NET.send({ t:'start', room:0, seed, diff:G.diff, ff:G.ff, up:G.upgOn, n:G.nPlayers, hd });
+  beginRun(0, seed, hd);
 }
 /* ambos desplegables salen de DIFFS: una sola lista que mantener */
 function fillDiffSelects() {
@@ -8169,7 +8324,7 @@ function soloRun() {
   G.ff = parseInt($('sel-ff').value,10) || 0;
   G.nPlayers = G.players.size;                          /* en local cuentan todos */
   showScreen(null);
-  beginRun(0, (Math.random()*1e9)|0);
+  beginRun(0, (Math.random()*1e9)|0, parseInt($('sel-modo').value,10) ? 1 : 0);
 }
 /* partida abierta: sin servidor de emparejamiento, se prueban unos codigos
    publicos conocidos; si ninguno responde, se abre el primero libre */
@@ -8456,6 +8611,16 @@ function renderMarcas() {
             '</td><td>' + (r.room || '—') + '</td><td>' + (r.kills || '—') + '</td><td>' + mm + '</td></tr>';
   });
   html += '</tbody></table>';
+  html += '<div class="muted" style="margin-top:14px">MODO HORDA</div>' +
+          '<table class="endtab"><thead><tr><th class="nm">DIFICULTAD</th><th>HORDAS</th>' +
+          '<th>MEJOR OLEADA</th><th>MÁS BAJAS</th><th>MÁS TIEMPO</th></tr></thead><tbody>';
+  DIFFS.forEach((d, i) => {
+    const r = BEST.horda[String(i)] || { runs:0, ola:0, kills:0, time:0 };
+    const mm = r.time ? Math.floor(r.time/60) + ':' + String(Math.floor(r.time%60)).padStart(2,'0') : '—';
+    html += '<tr><td class="nm">' + d.name + '</td><td>' + r.runs + '</td><td>' +
+            (r.ola || '—') + '</td><td>' + (r.kills || '—') + '</td><td>' + mm + '</td></tr>';
+  });
+  html += '</tbody></table>';
   t.innerHTML = html;
   $('marcas-res').textContent = 'GLOBAL: ' + BEST.runs + ' runs · mejor sala ' + BEST.room +
     ' · ' + BEST.kills + ' bajas en una run · ' +
@@ -8477,7 +8642,7 @@ $('btn-marcas-x').onclick = () => showScreen('scr-main');
 $('btn-marcas-reset').onclick = () => {
   if (!confirm('¿Borrar todas las marcas y medallas?')) return;
   BEST.room = 0; BEST.kills = 0; BEST.time = 0; BEST.runs = 0;
-  BEST.porDif = {}; BEST.medallas = {};
+  BEST.porDif = {}; BEST.medallas = {}; BEST.horda = {};
   saveBest(); renderMarcas();
 };
 let ayudaVuelve = 'scr-main';
@@ -8504,6 +8669,7 @@ $('btn-keys-reset').onclick = () => {
   renderKeys();
 };
 $('btn-fullscreen').onclick = () => { alternarPantallaCompleta(); setTimeout(avisoTeclas, 300); };
+$('sel-modo').onchange = () => renderLobby();
 $('btn-start').onclick = () => { if (NET.online) startRunHost(); else soloRun(); };
 /* abre la partida del sofa a otras PCs conservando a los que ya estan */
 $('btn-invitar').onclick = () => {
@@ -8594,10 +8760,13 @@ function frame(now) {
       if (G.flowT <= 0) { G.flowT = 0.3; buildFlows([...G.players.values()].filter(q=>!q.down)); }
       for (const e of G.enemies) e.update(dt);
       updateProjectiles(dt);
-      if (G.roomState === 'fight' && G.oleadas && G.oleada < G.oleadas &&
-          G.enemies.filter(e=>e.alive).length <= Math.max(1, Math.round(G.enemies.length*0.30)))
-        siguienteOleada();
-      if (G.roomState === 'fight' && G.enemies.length && !G.enemies.some(e=>e.alive)) roomCleared();
+      if (G.horda) hordaTick(dt);
+      else {
+        if (G.roomState === 'fight' && G.oleadas && G.oleada < G.oleadas &&
+            G.enemies.filter(e=>e.alive).length <= Math.max(1, Math.round(G.enemies.length*0.30)))
+          siguienteOleada();
+        if (G.roomState === 'fight' && G.enemies.length && !G.enemies.some(e=>e.alive)) roomCleared();
+      }
       updateExitCircle(dt);
       G.reachT = (G.reachT||0) - dt;
       if (G.reachT <= 0) {                                  /* saca a los que queden aislados */
