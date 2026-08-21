@@ -5613,30 +5613,53 @@ function lanzarOleada() {
   const dc = (DIFFS[G.diff] || DIFFS[DIFF_NORMAL]).count || 1;
   const jug = clamp(G.nPlayers || 1, 1, MAX_PLAYERS);
   const jefe = G.ola % 10 === 0, mini = !jefe && G.ola % 5 === 0;
+  /* cada diez oleadas se cambia de arena: si no, cansa */
+  if (G.ola > 1 && G.ola % 10 === 1) {
+    const guardaH = G.horda, guardaO = G.ola, guardaF = G.olaFase;
+    G.mod = MODIFIERS[0];
+    startRoom(1 + ((G.ola/10)|0)*4, (Math.random()*1e9)|0);
+    G.horda = guardaH; G.ola = guardaO; G.olaFase = guardaF;
+    G.roomState = 'fight'; G.portalOn = false;
+    G.enemies.length = 0;
+    addMsg('🚪 CAMBIO DE ARENA', '#9fd0ff');
+  }
   G.enemies.length = 0;
   const sitios = freeCells(MAP.spawn, 8);
   if (jefe) {                                            /* uno de los cuatro, por turno */
     const claves = Object.values(BOSS_ROOMS);
-    const turno = ((((G.ola / 10) | 0) - 1) % claves.length + claves.length) % claves.length;
+    const vuelta = ((G.ola / 10) | 0) - 1;
+    const turno = ((vuelta % claves.length) + claves.length) % claves.length;
     const b = new Enemy(BOSSES[claves[turno]], MAP.w/2, 6.5, null);
+    /* a partir de la segunda vuelta vienen mas cargados */
+    const extra = 1 + Math.floor(vuelta / claves.length) * 0.85;
+    if (extra > 1) {
+      b.maxhp = Math.round(b.maxhp*extra); b.hp = b.maxhp;
+      b.dmg *= 1 + (extra-1)*0.45;
+      b.speed *= 1 + (extra-1)*0.12;
+    }
     G.enemies.push(b); G.bossRef = b;
-    startCinematic(b.def.name, 'OLEADA ' + G.ola, b.def);
+    startCinematic(b.def.name + (extra > 1 ? ' II' : ''), 'OLEADA ' + G.ola, b.def);
   } else {
     if (mini) {
       const k = pick(Object.keys(MINIBOSSES));
       const sp = sitios.splice((Math.random()*sitios.length)|0, 1)[0] || MAP.exit;
       const e = new Enemy(MINIBOSSES[k], sp.x, sp.y, null);
+      const sube = 1 + G.ola*0.06;                       /* que sigan dando miedo */
+      e.maxhp = Math.round(e.maxhp*sube); e.hp = e.maxhp;
+      e.dmg *= 1 + G.ola*0.02;
       G.enemies.push(e); G.bossRef = e;
       G.miniBanner = { def: MINIBOSSES[k], hp: Math.round(e.maxhp), t: 3.4 };
       G.miniVisto = e.id;
     } else G.bossRef = null;
     const pool = hordaPool(G.ola);
-    const n = Math.max(4, Math.round((6 + G.ola*1.35 + (jug-1)*2.4) * dc));
+    /* el numero se estanca y a partir de ahi suben vida y velocidad: si no,
+       la sala se llena tanto que no se ve nada */
+    const n = clamp(Math.round((6 + G.ola*1.35 + (jug-1)*2.4) * dc), 4, 36);
     const elite = clamp(0.05 + G.ola*0.012, 0, 0.35);
     for (let i=0;i<n && sitios.length;i++) {
       const sp = sitios.splice((Math.random()*sitios.length)|0, 1)[0];
       const en = new Enemy(ENEMIES[pick(pool)], sp.x, sp.y, null);
-      const dureza = 1 + G.ola*0.045;                     /* van aguantando mas */
+      const dureza = 1 + G.ola*0.055;                     /* van aguantando mas */
       en.maxhp = Math.round(en.maxhp*dureza); en.hp = en.maxhp;
       en.speed *= 1 + Math.min(0.35, G.ola*0.012);
       if (Math.random() < elite) makeElite(en);
