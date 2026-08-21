@@ -4255,7 +4255,7 @@ class Enemy {
     this.phase2 = false; this.blink = 0;
     this.dashT = def.dashEvery||def.chargeEvery||def.leapEvery||0; this.dashing = 0;
     this.summonedOnce = false; this.minionDeathT = -999; this.minions = [];
-    this.burst = 0; this.burstT = 0; this.aiming = 0; this.stagger = 0; this.gib = false;
+    this.burst = 0; this.burstT = 0; this.aiming = 0; this.apunta = 0; this.stagger = 0; this.gib = false;
     this.tele = 0; this.teleKind = null; this.owner = ownerBoss||null;
     this.knock = 0; this.knockX = 0; this.knockY = 0;
     this.backoff = 0; this.orbT = 0; this.orbitDir = Math.random() < 0.5 ? 1 : -1;
@@ -4558,9 +4558,9 @@ class Enemy {
           this.shoot(aimA + (i-(n-1)/2)*0.17, def.volleySpr || 'boss', def.projSpeed,
                      this.dmgAhora*(def.volleyMul || 0.6), { scale:0.30 });
         this.cd = def.cd*rate; this.anim = 0.4;
-      } else if (def.kind === 'ranged') {                /* vigilante raso */
-        this.shoot(toA+rnd(-0.06,0.06), 'bullet', def.projSpeed, this.dmgAhora, {scale:0.22});
-        this.cd = def.cd*rate; this.anim = 0.3;
+      } else if (def.kind === 'ranged') {                /* vigilante raso: apunta y luego dispara */
+        this.apunta = 0.26 * rate; this.cd = def.cd*rate; this.anim = 0.34;
+        Snd.at(this.x,this.y).tone(680, 0.07, 'square', 0.026, 1100);
       }
     }
     if (this.burst > 0) {
@@ -4593,6 +4593,13 @@ class Enemy {
           Snd.at(this.x,this.y).tone(90,0.3,'sawtooth',0.09,240);
         }
         this.teleKind = null;
+      }
+    }
+    if (this.apunta > 0) {                              /* aviso corto antes de soltar */
+      this.apunta -= dt;
+      if (this.apunta <= 0 && this.los) {
+        this.shoot(toA+rnd(-0.06,0.06), 'bullet', def.projSpeed, this.dmgAhora, {scale:0.22});
+        this.anim = 0.25;
       }
     }
     if (this.aiming > 0) {                              /* el francotirador telegrafia */
@@ -5145,6 +5152,7 @@ function tickFuego(e, dt) {
     spawnParts('spark', e.x + rnd(-0.25,0.25), e.y + rnd(-0.25,0.25),
                rnd(0.2, e.scaleY*0.9), 1, 0.4, 1.4, 0.32);
   if (LIGHTS.length < 32 && Math.random() < dt*7) addLight(e.x, e.y, 3.4, 0.42, 0.14, 1);
+  if (!e.alive) { if (e.fuego > 1.2) e.fuego = 1.2; return; }   /* el cadaver humea y se apaga */
   e.fuegoT -= dt;
   if (e.fuegoT <= 0) {
     e.fuegoT = 0.45;
@@ -6684,6 +6692,11 @@ function collectSprites() {
       const k = e.tele > 0 ? (1 - e.tele/0.55) : (1 - e.aiming/0.55);
       list.push({ x:e.x, y:e.y, tex:FX.tele(), sx:e.scaleX*(1.4+k*1.9), sy:e.scaleX*(1.4+k*1.9),
                   anchor:'floor', lift:0.02, flash:0, alpha:0.35+0.45*k, raw:true });
+    }
+    if (e.alive && e.apunta > 0) {                      /* chispa en el canon justo antes */
+      list.push({ x:e.x, y:e.y, tex:FX.flash(), sx:e.scaleX*0.55, sy:e.scaleX*0.55,
+                  anchor:'floor', lift:e.scaleY*0.52, flash:0,
+                  alpha:0.55 + 0.35*Math.sin(G.time*40), raw:true });
     }
     if (e.alive && e.elite) {                           /* aura y galon del elite */
       list.push({ x:e.x, y:e.y, tex:FX.aura(), sx:sx*2.1, sy:sx*2.1, anchor:'floor', lift:0.02,
