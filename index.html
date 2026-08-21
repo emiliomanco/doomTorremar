@@ -4379,7 +4379,9 @@ function unlockWeapon(i, bossName) {
   if (!algo) return;
   addMsg('🔓 ' + WEAPONS[i].name + ' DESBLOQUEADA' + (bossName ? ' · ' + bossName : ''), '#8ce89b');
   killFeed('🔓 ' + WEAPONS[i].name, '#8ce89b');
+  G.armaBanner = { w:i, t:3.6, de:bossName || '' };
   Snd.pick();
+  setTimeout(()=>Snd.pick(), 140);
 }
 /* pasa a la siguiente arma desbloqueada; dir 1 adelante, -1 atras */
 function rotarArma(p, dir) {
@@ -5225,6 +5227,11 @@ function refreshBossRef() {
     if (!e.alive || !(e.boss || e.mini)) continue;
     if (!mejor || (e.boss && !mejor.boss) || e.maxhp > mejor.maxhp) mejor = e;
   }
+  /* si es un minijefe que no habiamos visto, sale su pancarta (tambien en cliente) */
+  if (mejor && mejor.mini && G.state === 'run' && G.miniVisto !== mejor.id) {
+    G.miniVisto = mejor.id;
+    G.miniBanner = { def: mejor.def, hp: Math.round(mejor.maxhp), t: 3.4 };
+  }
   G.bossRef = mejor;
 }
 function spawnRoomEnemies() {
@@ -5283,6 +5290,7 @@ function spawnRoomEnemies() {
     G.enemies.push(e); G.bossRef = e;
     addMsg('⚠ MINIJEFE: ' + MINIBOSSES[mb].name, '#ff8a5c');
     G.miniBanner = { def: MINIBOSSES[mb], hp: Math.round(e.maxhp), t: 3.4 };
+    G.miniVisto = e.id;
   }
 }
 function startRoom(n, seed) {
@@ -5294,7 +5302,7 @@ function startRoom(n, seed) {
   G.dmgNums.length = 0; G.feed.length = 0; G.combo = 0; G.decals.length = 0; G.holes.length = 0;
   if (G.trazas) G.trazas.length = 0;
   if (G.nubes) G.nubes.length = 0;
-  G.fase2T = 0; G.miniBanner = null;
+  G.fase2T = 0; G.miniBanner = null; G.armaBanner = null; G.miniVisto = 0;
   LIGHTS.length = 0; LA.length = 0;
   /* en un apagon los fluorescentes se caen: solo aguantan unos parpadeando */
   const apagon = G.mod && G.mod.id === 'blackout';
@@ -6710,6 +6718,29 @@ function brujula(p) {
     ctx.globalAlpha = 1;
   }
 }
+/* aviso central al desbloquear un arma en IMPOSIBLE */
+function bannerArma(p) {
+  const b = G.armaBanner;
+  if (!b || b.t <= 0) return;
+  const W = view.w, H = view.v3, s = view.s;
+  const entra = clamp((3.6 - b.t)/0.30, 0, 1);
+  const sale = clamp(b.t/0.6, 0, 1);
+  const a = Math.min(entra, sale);
+  const cw = 420*s, ch = 150*s;
+  const cx = W/2, cy = H*0.34 + (1-entra)*22*s;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(8,10,8,0.86)';
+  ctx.fillRect(cx-cw/2, cy-ch/2, cw, ch);
+  ctx.strokeStyle = 'rgba(140,232,155,0.85)'; ctx.lineWidth = Math.max(2, 3*s);
+  ctx.strokeRect(cx-cw/2, cy-ch/2, cw, ch);
+  bigText('🔓 ARMA DESBLOQUEADA', cx, cy - ch*0.28, (17*s)|0, '#8ce89b');
+  bigText(WEAPONS[b.w].name, cx, cy + ch*0.06,
+          clamp(cw/(WEAPONS[b.w].name.length*0.62), 20*s, 42*s)|0, '#ffe6a8');
+  if (b.de) bigText('LA GUARDABA ' + b.de, cx, cy + ch*0.30, (14*s)|0, '#c9b48a');
+  bigText('PULSA ' + (b.w+1) + ' PARA SACARLA', cx, cy + ch*0.44, (13*s)|0, '#9fd0ff');
+  ctx.restore();
+}
 /* pancarta lateral cuando aparece un minijefe: retrato, nombre y aviso */
 function bannerMini() {
   const b = G.miniBanner;
@@ -7019,6 +7050,7 @@ function renderHUD() {
     bigText(Math.max(0,Math.round(boss.hp)) + ' / ' + Math.round(boss.maxhp),
             bx+bw2-6*s, by+bh*0.72, (12*s)|0, '#ffd9d0', 'right');
   }
+  bannerArma(p);
   bannerMini();
   brujula(p);
   drawCrosshair(p);
@@ -8375,6 +8407,10 @@ function frame(now) {
     if (G.miniBanner) {
       G.miniBanner.t -= dt;
       if (G.miniBanner.t <= 0) G.miniBanner = null;
+    }
+    if (G.armaBanner) {
+      G.armaBanner.t -= dt;
+      if (G.armaBanner.t <= 0) G.armaBanner = null;
     }
     if (G.fase2T > 0) {                                 /* apagon breve de la fase 2 */
       G.fase2T -= dt;
