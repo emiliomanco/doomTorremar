@@ -104,6 +104,14 @@
   .pod .ptag{font-size:10px;letter-spacing:1px;color:#9fd0ff;background:rgba(20,30,44,.7);
              border:1px solid #33506e;border-radius:6px;padding:1px 7px;margin-top:2px}
   .opt{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .medrow{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:12px;max-width:760px}
+  .med{display:flex;align-items:center;gap:6px;background:#14110e;border:2px solid #5a4c33;
+    border-radius:8px;padding:4px 10px;font-family:Impact,sans-serif;letter-spacing:1px;
+    font-size:12px;color:#d8d2c2}
+  .med .mi{font-size:16px}
+  .med.nueva{border-color:#ffd45e;background:#2c2415;color:#ffe9a8;
+    box-shadow:0 0 12px rgba(255,212,94,.35)}
+  .med .mn{font-size:9px;color:#1a1a1e;background:#ffd45e;border-radius:4px;padding:1px 4px;margin-left:2px}
   .endtab{border-collapse:collapse;margin-top:10px;font-size:13px;max-width:100%}
   .endtab th{color:#c9b48a;font-family:Impact,sans-serif;letter-spacing:1px;font-weight:400;
     padding:4px 9px;border-bottom:2px solid #5a4c33;font-size:12px}
@@ -150,6 +158,7 @@
 <div class="screen on" id="scr-main">
   <button class="gear" id="btn-keys" title="Opciones de control">⚙</button>
   <button class="gear" id="btn-ayuda" title="Cómo se juega" style="right:74px">❔</button>
+  <button class="gear" id="btn-marcas" title="Marcas y medallas" style="right:132px">🏆</button>
   <div class="brand">
     <h1>TORREMAR</h1>
     <div class="sub">D U C &nbsp; I N &nbsp; A L T U M</div>
@@ -173,6 +182,18 @@
     </div>
   </div>
   <div class="muted" id="net-state">Red: comprobando…</div>
+</div>
+
+<!-- ===================== MARCAS Y MEDALLAS ===================== -->
+<div class="screen" id="scr-marcas">
+  <button class="closeX" id="btn-marcas-x">✕</button>
+  <h2>MARCAS Y MEDALLAS</h2>
+  <div class="panel col">
+    <div id="marcas-tab"></div>
+    <div class="muted" style="margin-top:10px" id="marcas-res"></div>
+    <div class="medrow" id="marcas-med" style="max-width:820px"></div>
+    <div class="row"><button id="btn-marcas-reset" class="red">BORRAR MARCAS</button></div>
+  </div>
 </div>
 
 <!-- ===================== COMO SE JUEGA ===================== -->
@@ -504,20 +525,73 @@ try {
 } catch (e) {}
 function saveChar() { try { localStorage.setItem('torremar.char', JSON.stringify(PREFS)); } catch (e) {} }
 /* marcas personales de la partida */
-const BEST = { room:0, kills:0, time:0, runs:0 };
+/* BEST guarda la marca global y, en porDif, una por cada dificultad */
+const BEST = { room:0, kills:0, time:0, runs:0, porDif:{}, medallas:{} };
 try {
   const b = JSON.parse(localStorage.getItem('torremar.best') || 'null');
   if (b) Object.assign(BEST, b);
+  if (!BEST.porDif) BEST.porDif = {};
+  if (!BEST.medallas) BEST.medallas = {};
 } catch (e) {}
 function saveBest() { try { localStorage.setItem('torremar.best', JSON.stringify(BEST)); } catch (e) {} }
-function recordRun(room, kills, time) {
+function recordRun(room, kills, time, dif, gano) {
   BEST.runs++;
   let nuevo = false;
   if (room > BEST.room) { BEST.room = room; nuevo = true; }
   if (kills > BEST.kills) { BEST.kills = kills; nuevo = true; }
   if (time > BEST.time) BEST.time = time;
+  if (dif !== undefined) {                              /* marca propia de esa dificultad */
+    const k = String(dif);
+    const d = BEST.porDif[k] || (BEST.porDif[k] = { room:0, kills:0, time:0, runs:0, ganadas:0 });
+    d.runs++;
+    if (gano) d.ganadas++;
+    if (room > d.room) { d.room = room; nuevo = true; }
+    if (kills > d.kills) d.kills = kills;
+    if (gano && (!d.time || time < d.time)) d.time = time;   /* la mejor es la mas rapida */
+  }
   saveBest();
   return nuevo;
+}
+/* --------------------------- medallas de run -------------------------- */
+const MEDALLAS = [
+  { id:'limpio',   ico:'🧼', name:'SIN UN RASGUÑO',   desc:'Terminar sin caer ni una vez',
+    ok:(st,ctx)=> ctx.sala >= 5 && !st.caidas },
+  { id:'intacto',  ico:'💎', name:'INTOCABLE',        desc:'Menos de 100 de daño recibido en 10 salas',
+    ok:(st,ctx)=> ctx.sala >= 10 && (st.recibido||0) < 100 },
+  { id:'punteria', ico:'🎯', name:'OJO DE HALCÓN',    desc:'70% de aciertos con al menos 150 disparos',
+    ok:(st)=> (st.disparos||0) >= 150 && (st.aciertos||0)/st.disparos >= 0.70 },
+  { id:'cabezas',  ico:'💀', name:'DIRECTO A LA SIEN', desc:'40 disparos a la cabeza',
+    ok:(st)=> (st.cabezas||0) >= 40 },
+  { id:'carnicero',ico:'🔪', name:'CARNICERÍA',       desc:'25 ejecuciones con el machete',
+    ok:(st)=> (st.ejec||0) >= 25 },
+  { id:'muralla',  ico:'🛡️', name:'MURALLA',          desc:'20 balas devueltas de una parada',
+    ok:(st)=> (st.paradas||0) >= 20 },
+  { id:'furioso',  ico:'⚡', name:'DUC IN ALTUM',      desc:'10 furias soltadas en una run',
+    ok:(st)=> (st.furias||0) >= 10 },
+  { id:'artillero',ico:'🧨', name:'ARTILLERO',        desc:'30 granadas lanzadas',
+    ok:(st)=> (st.granadas||0) >= 30 },
+  { id:'maraton',  ico:'🏃', name:'MARATÓN',          desc:'Llegar a la sala 25',
+    ok:(st,ctx)=> ctx.sala >= 25 },
+  { id:'titulado', ico:'🎓', name:'TITULADO',         desc:'Completar las 50 salas',
+    ok:(st,ctx)=> ctx.gano },
+  { id:'souls',    ico:'🔥', name:'ALUMNO AVENTAJADO', desc:'Sala 20 en Souls-Like o superior',
+    ok:(st,ctx)=> ctx.sala >= 20 && ctx.dif >= 4 },
+  { id:'imposible',ico:'👑', name:'MATRÍCULA DE HONOR', desc:'Sala 15 en Imposible',
+    ok:(st,ctx)=> ctx.sala >= 15 && ctx.dif === DIFF_IMPOSIBLE }
+];
+/* devuelve las que se han ganado en esta run y marca las nuevas */
+function medallasDeRun(st, ctx) {
+  const sacadas = [];
+  for (const m of MEDALLAS) {
+    let ok = false;
+    try { ok = !!m.ok(st || {}, ctx); } catch (e) {}
+    if (!ok) continue;
+    const nueva = !BEST.medallas[m.id];
+    if (nueva) BEST.medallas[m.id] = Date.now();
+    sacadas.push({ m, nueva });
+  }
+  if (sacadas.some(x=>x.nueva)) saveBest();
+  return sacadas;
 }
 const mySkin = () => PREFS.skin || pick(SKINS);
 const myFit  = () => (PREFS.fit === null ? (Math.random() < 0.5 ? 0 : 1) : PREFS.fit);
@@ -7539,7 +7613,15 @@ function navegaMejoras() {
 }
 function showEnd(win) {
   const p = me();
-  const nuevoRecord = recordRun(G.room, G.kills, G.time);
+  const nuevoRecord = recordRun(G.room, G.kills, G.time, G.diff, win);
+  /* las medallas las gana el equipo: basta con que las saque uno */
+  const ctxMed = { sala:G.room, gano:win, dif:G.diff };
+  const hojas = localesVivos().map(q => q.stats).filter(Boolean);
+  if (!hojas.length && p && p.stats) hojas.push(p.stats);
+  const vistas = new Map();
+  for (const h of hojas) for (const g of medallasDeRun(h, ctxMed))
+    if (!vistas.has(g.m.id) || g.nueva) vistas.set(g.m.id, g);
+  const gana = [...vistas.values()];
   $('end-title').textContent = win ? '¡RUN COMPLETADA!' : 'RUN TERMINADA';
   $('end-title').style.color = win ? '#7ee081' : '#d92b2b';
   const mins = Math.floor((G.time)/60), secs = Math.floor(G.time%60);
@@ -7574,9 +7656,21 @@ function showEnd(win) {
       '<th>PARADAS</th><th>FURIAS</th><th>DAÑO</th><th>PUNTERÍA</th><th>CAÍDAS</th>' +
       '<th class="mj">MEJORAS</th>' +
     '</tr></thead><tbody>' + filas + '</tbody></table>' +
+    (gana.length
+      ? '<div class="medrow">' + gana.map(g =>
+          '<div class="med' + (g.nueva ? ' nueva' : '') + '" title="' + g.m.desc + '">' +
+          '<span class="mi">' + g.m.ico + '</span>' + g.m.name +
+          (g.nueva ? '<span class="mn">NUEVA</span>' : '') + '</div>').join('') + '</div>'
+      : '') +
     (nuevoRecord ? '<div style="color:#ffd45e;margin-top:6px">★ NUEVO RÉCORD PERSONAL</div>' : '') +
-    '<div class="muted" style="margin-top:8px">MEJOR MARCA: sala ' + BEST.room + ' · ' + BEST.kills +
-    ' bajas · ' + BEST.runs + ' runs jugadas</div>';
+    '<div class="muted" style="margin-top:8px">MEJOR MARCA EN ' + DIFFS[G.diff].name + ': sala ' +
+      ((BEST.porDif[String(G.diff)]||{}).room || 0) +
+      ' · ' + ((BEST.porDif[String(G.diff)]||{}).ganadas || 0) + ' completada' +
+      (((BEST.porDif[String(G.diff)]||{}).ganadas || 0) === 1 ? '' : 's') + ' de ' +
+      ((BEST.porDif[String(G.diff)]||{}).runs || 0) + '</div>' +
+    '<div class="muted">GLOBAL: sala ' + BEST.room + ' · ' + BEST.kills +
+    ' bajas · ' + BEST.runs + ' runs · ' + Object.keys(BEST.medallas).length + '/' +
+    MEDALLAS.length + ' medallas</div>';
   showScreen('scr-end');
 }
 let keysReturn = 'scr-main';
@@ -8056,6 +8150,43 @@ function renderAyuda() {
     cont.appendChild(col);
   }
 }
+/* ---------- marcas por dificultad y medallas ---------- */
+function renderMarcas() {
+  const t = $('marcas-tab');
+  let html = '<table class="endtab"><thead><tr>' +
+    '<th class="nm">DIFICULTAD</th><th>RUNS</th><th>COMPLETADAS</th><th>MEJOR SALA</th>' +
+    '<th>MÁS BAJAS</th><th>MEJOR TIEMPO</th></tr></thead><tbody>';
+  DIFFS.forEach((d, i) => {
+    const r = BEST.porDif[String(i)] || { runs:0, ganadas:0, room:0, kills:0, time:0 };
+    const mm = r.time ? Math.floor(r.time/60) + ':' + String(Math.floor(r.time%60)).padStart(2,'0') : '—';
+    html += '<tr><td class="nm">' + d.name + '</td><td>' + r.runs + '</td><td>' + r.ganadas +
+            '</td><td>' + (r.room || '—') + '</td><td>' + (r.kills || '—') + '</td><td>' + mm + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  t.innerHTML = html;
+  $('marcas-res').textContent = 'GLOBAL: ' + BEST.runs + ' runs · mejor sala ' + BEST.room +
+    ' · ' + BEST.kills + ' bajas en una run · ' +
+    Object.keys(BEST.medallas).length + ' de ' + MEDALLAS.length + ' medallas';
+  const md = $('marcas-med');
+  md.innerHTML = '';
+  for (const m of MEDALLAS) {
+    const tiene = !!BEST.medallas[m.id];
+    const el = document.createElement('div');
+    el.className = 'med' + (tiene ? ' nueva' : '');
+    el.style.opacity = tiene ? '1' : '0.42';
+    el.title = m.desc;
+    el.innerHTML = '<span class="mi">' + (tiene ? m.ico : '🔒') + '</span>' + m.name;
+    md.appendChild(el);
+  }
+}
+$('btn-marcas').onclick = () => { renderMarcas(); showScreen('scr-marcas'); };
+$('btn-marcas-x').onclick = () => showScreen('scr-main');
+$('btn-marcas-reset').onclick = () => {
+  if (!confirm('¿Borrar todas las marcas y medallas?')) return;
+  BEST.room = 0; BEST.kills = 0; BEST.time = 0; BEST.runs = 0;
+  BEST.porDif = {}; BEST.medallas = {};
+  saveBest(); renderMarcas();
+};
 let ayudaVuelve = 'scr-main';
 $('btn-ayuda').onclick = () => { ayudaVuelve = 'scr-main'; renderAyuda(); showScreen('scr-ayuda'); };
 $('btn-ayuda-x').onclick = () => showScreen(ayudaVuelve);
