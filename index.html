@@ -1331,7 +1331,8 @@ function genRoom(roomNo, seed) {
   const set = (x,y,v) => { if (x>=0&&y>=0&&x<W&&y<H) g[y*W+x]=v; };
   for (let x=0;x<W;x++){ set(x,0,zone); set(x,H-1,zone); }
   for (let y=0;y<H;y++){ set(0,y,zone); set(W-1,y,zone); }
-  const layouts = boss ? ['bossArena'] : (roomNo === 0 ? ['safe'] : ['open','pillars','cross','ring','blocks','lanes']);
+  const layouts = boss ? ['bossArena'] : (roomNo === 0 ? ['safe']
+    : ['open','pillars','cross','ring','blocks','lanes','aulas','laberinto','patio','zigzag']);
   const layout = layouts[(R()*layouts.length)|0];
   const block = (x,y,w,h) => { for (let j=0;j<h;j++) for (let i=0;i<w;i++) set(x+i,y+j,zone); };
   if (layout === 'pillars') {
@@ -1356,6 +1357,53 @@ function genRoom(roomNo, seed) {
       const y = 5 + i*6;
       const gap = 3 + ((R()*(W-10))|0);
       for (let x=3;x<W-3;x++) if (x<gap || x>gap+3) set(x,y,zone);
+    }
+  } else if (layout === 'aulas') {
+    /* dos filas de aulas con su pasillo en medio y puertas alternas */
+    for (const fila of [0, 1]) {
+      const y0 = fila ? (H>>1)+2 : 4;
+      const alto = (H>>1) - 6;
+      if (alto < 3) continue;
+      for (let x=3; x<W-3; x+=7) {
+        const anc = Math.min(6, W-3-x);
+        if (anc < 3) break;
+        block(x, y0, anc, alto);
+        const puerta = y0 + (fila ? 0 : alto-1);         /* la puerta da al pasillo */
+        const px = x + 2 + ((R()*Math.max(1, anc-3))|0);
+        set(px, puerta, 0); set(px+1, puerta, 0);
+        if (R() < 0.55) {                                 /* algunas huecas por dentro */
+          for (let j=1;j<alto-1;j++) for (let i=1;i<anc-1;i++) set(x+i, y0+j, 0);
+        }
+      }
+    }
+  } else if (layout === 'laberinto') {
+    /* tabiques cortos alternos: obliga a rodear sin cerrar el paso */
+    for (let y=5; y<H-5; y+=4) {
+      const inicio = (y % 8 === 5) ? 3 : (W>>1);
+      const largo = 4 + ((R()*5)|0);
+      for (let x=inicio; x<Math.min(W-3, inicio+largo); x++) set(x, y, zone);
+      const otro = (y % 8 === 5) ? (W>>1)+2 : 4;
+      const l2 = 3 + ((R()*4)|0);
+      for (let x=otro; x<Math.min(W-3, otro+l2); x++) set(x, y, zone);
+    }
+  } else if (layout === 'patio') {
+    /* patio abierto en el centro y galeria de columnas alrededor */
+    const m = 4;
+    for (let x=m; x<W-m; x+=3) { set(x, m, zone); set(x, H-m-1, zone); }
+    for (let y=m; y<H-m; y+=3) { set(m, y, zone); set(W-m-1, y, zone); }
+    for (let i=0;i<4;i++) {
+      const x = m+2+((R()*(W-m*2-4))|0), y = m+2+((R()*(H-m*2-4))|0);
+      if (Math.abs(y-(H-3.5)) < 4) continue;
+      block(x, y, 2, 2);
+    }
+  } else if (layout === 'zigzag') {
+    /* muros en diagonal escalonada: se avanza en zigzag */
+    for (let k=0;k<4;k++) {
+      const y = 5 + k*Math.max(3, ((H-10)/4)|0);
+      const izq = k % 2 === 0;
+      const largo = ((W-8) * 0.62) | 0;
+      const x0 = izq ? 3 : W-3-largo;
+      for (let x=x0; x<x0+largo; x++) { set(x, y, zone); if (R()<0.5) set(x, y+1, zone); }
     }
   } else if (layout === 'bossArena') {
     block(5,5,3,3); block(W-8,5,3,3); block(5,H-8,3,3); block(W-8,H-8,3,3);
@@ -4668,6 +4716,17 @@ function damagePlayer(p, amount, sx, sy) {
 function goDown(p) {
   p.hp = 0; p.down = true; p.downT = 0; p.reviving = null;
   stat(p, 'caidas');
+  /* si al caer este solo queda uno en pie, el momento se estira */
+  const enPie = [...G.players.values()].filter(q => q.alive && !q.down && q !== p);
+  if (enPie.length === 1 && G.players.size > 1) {
+    G.hitStop = Math.max(G.hitStop||0, 0.55);
+    addMsg('⚠ ' + (enPie[0].nick||'') + ' SE QUEDA SOLO', '#ff8a5c');
+    killFeed('⚠ ÚLTIMA RESISTENCIA', '#ff5c5c');
+    Snd.tone(60, 1.4, 'sawtooth', 0.12, 30);
+    if (enPie[0].isLocal) enPie[0].flash = Math.max(enPie[0].flash||0, 0.3);
+  } else if (!enPie.length) {
+    G.hitStop = Math.max(G.hitStop||0, 0.45);            /* el ultimo cae a camara lenta */
+  }
   addMsg(p.isLocal ? '¡ESTÁS ABATIDO! ESPERA A UN COMPAÑERO' : (p.nick + ' ESTÁ ABATIDO'), '#ff5c5c');
   Snd.die();
   NET.send({ t:'hp', id:p.id, hp:0, down:true });
@@ -6178,7 +6237,12 @@ function endRunLocal(win) {
    ===================================================================== */
 let lightK = 1, fogMul = 1, vignette = null, painVig = null, grainTex = null, hudTex = null;
 let salpicon = null;                                    /* manchas de sangre del visor */
-function camHeight() { const p = cam(); return 0.5 + (p ? (p.z||0) : 0); }
+function camHeight() {
+  const p = cam(); if (!p) return 0.5;
+  /* abatido: la vista cae al suelo en medio segundo */
+  const caida = p.down ? clamp((p.downT||0)/0.55, 0, 1) : 0;
+  return 0.5 + (p.z||0) - caida*0.34;
+}
 function renderFloorCeiling(horizon) {
   const W = view.w, H = view.v3;
   if (!fbuf.cnv) buildFloorBuffer();
@@ -8957,6 +9021,12 @@ function frame(now) {
       const shY = ((jug.shake ? rnd(-jug.shake,jug.shake)*view.s*0.35 : 0) + (jug.pushY||0)*view.s*0.5) * sk;
       ctx.save();
       if (shX||shY) ctx.translate(shX, shY);
+      if (jug.down) {                                    /* la vista se ladea al caer */
+        const cd = clamp((jug.downT||0)/0.55, 0, 1);
+        ctx.translate(view.w*0.5, view.v3*0.5);
+        ctx.rotate(cd*0.30);
+        ctx.translate(-view.w*0.5, -view.v3*0.5);
+      }
       ctx.beginPath();
       ctx.rect(-Math.abs(shX)-2, -Math.abs(shY)-2, view.w+Math.abs(shX)*2+4, view.v3+Math.abs(shY)+2);
       ctx.clip();
