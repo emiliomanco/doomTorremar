@@ -5594,6 +5594,7 @@ function nextRoom() {
   startRoom(n, seed);
 }
 function endRun(win) {
+  if (G.state === 'end') return;                        /* ya estaba terminada */
   G.over = true; G.win = win; G.state = 'end';
   if (document.pointerLockElement) document.exitPointerLock();
   NET.send({ t:'over', win });
@@ -5606,6 +5607,8 @@ function endRun(win) {
    mueven su propio avatar y envian eventos de dano.
    ===================================================================== */
 const DEF_LIST = Object.keys(ALLDEF);
+const PROP_LIST = Object.keys(PROPS);
+const ITEM_LIST = Object.keys(ITEMS);
 const SPR_LIST = Object.keys(PROJ);
 const NET = {
   peer:null, conns:new Map(), isHost:false, code:'', online:false, available:(typeof Peer !== 'undefined'),
@@ -5733,11 +5736,10 @@ function worldSnapshot() {
   const pr = [];
   for (const p of G.projectiles) pr.push([p.id, SPR_LIST.indexOf(p.spr), Math.round(p.x*50), Math.round(p.y*50), Math.round((p.z||0.5)*50)]);
   const it = [];
-  for (const i of G.items) if (!i.taken) it.push([i.id, Object.keys(ITEMS).indexOf(i.kind), Math.round(i.x*50), Math.round(i.y*50)]);
+  for (const i of G.items) if (!i.taken) it.push([i.id, ITEM_LIST.indexOf(i.kind), Math.round(i.x*50), Math.round(i.y*50)]);
   const po = [];
   for (const q of G.pools) po.push([Math.round(q.x*50), Math.round(q.y*50), Math.round(q.r*50)]);
   const pp = [];
-  const PROP_LIST = Object.keys(PROPS);
   for (const pr of G.props) if (!pr.dead)
     pp.push([pr.id, PROP_LIST.indexOf(pr.kind), Math.round(pr.x*50), Math.round(pr.y*50)]);
   return { t:'world', e:en, p:pr, i:it, q:po, ps:G.portalOn?1:0, rs:G.roomState==='cleared'?1:0,
@@ -5775,7 +5777,7 @@ function applySnapshot(m) {
   G.projectiles.length = 0;
   for (const a of m.p) G.projectiles.push({ id:a[0], spr:SPR_LIST[a[1]]||'bullet', x:a[2]/50, y:a[3]/50, z:a[4]/50,
     vx:0, vy:0, dmg:0, r:0.16, from:'enemy', life:9, scale:0.30, remote:true });
-  const kinds = Object.keys(ITEMS);
+  const kinds = ITEM_LIST;
   G.items.length = 0;
   for (const a of m.i) G.items.push({ id:a[0], kind:kinds[a[1]]||'bullets', x:a[2]/50, y:a[3]/50, t:0, taken:false });
   G.pools.length = 0;
@@ -5791,7 +5793,7 @@ function applySnapshot(m) {
     }
     for (const a of m.pr) {
       if (G.props.some(o=>o.id===a[0])) continue;
-      const kind = Object.keys(PROPS)[a[1]] || 'crate', d = PROPS[kind];
+      const kind = PROP_LIST[a[1]] || 'crate', d = PROPS[kind];
       G.props.push({ id:a[0], kind, x:a[2]/50, y:a[3]/50, hp:d.hp, maxhp:d.hp, radius:d.radius, flash:0, dead:false });
     }
   }
@@ -5957,6 +5959,7 @@ function relay(from, m) {
   for (const [id, c] of NET.conns) { if (id === from) continue; try { if (c.open) c.send(JSON.stringify(m)); } catch(e){} }
 }
 function endRunLocal(win) {
+  if (G.state === 'end') return;                        /* el aviso llego dos veces */
   G.over = true; G.win = win; G.state = 'end';
   if (document.pointerLockElement) document.exitPointerLock();
   showEnd(win);
