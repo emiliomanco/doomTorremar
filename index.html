@@ -110,6 +110,14 @@
   .endtab td{padding:4px 9px;border-bottom:1px solid #33302a;color:#e8e2d2;text-align:center}
   .endtab td.nm{text-align:left;color:#ffd45e;font-family:Impact,sans-serif;letter-spacing:1px}
   .endtab td.mj,.endtab th.mj{text-align:left;font-size:15px;letter-spacing:1px;max-width:200px}
+  .ayblk{flex:1;min-width:250px;max-width:340px}
+  .ayblk h4{font-family:Impact,sans-serif;letter-spacing:2px;color:#ffb347;font-size:16px;
+    font-weight:400;margin:10px 0 5px;border-bottom:1px solid #5a4c33;padding-bottom:3px}
+  .ayrow{display:flex;gap:8px;align-items:flex-start;margin:5px 0;font-size:13px;line-height:1.3}
+  .ayk{flex:0 0 auto;background:#241d16;border:2px solid #8a713f;border-radius:6px;
+    padding:1px 7px;font-size:11px;color:#ffd45e;font-family:'Courier New',monospace;white-space:nowrap}
+  .ayt{color:#d8d2c2}
+  .ayt b{color:#f0ead8;font-weight:400;font-family:Impact,sans-serif;letter-spacing:1px}
   .cpane{display:none;gap:8px}
   .cpane.on{display:flex}
   #host-controls select{max-width:172px}
@@ -141,6 +149,7 @@
 <!-- ===================== MENU PRINCIPAL ===================== -->
 <div class="screen on" id="scr-main">
   <button class="gear" id="btn-keys" title="Opciones de control">⚙</button>
+  <button class="gear" id="btn-ayuda" title="Cómo se juega" style="right:74px">❔</button>
   <div class="brand">
     <h1>TORREMAR</h1>
     <div class="sub">D U C &nbsp; I N &nbsp; A L T U M</div>
@@ -150,7 +159,7 @@
       <canvas id="home-preview" width="150" height="228"
               style="width:150px;height:228px;image-rendering:auto"></canvas>
       <h3>PERSONALIZACIÓN</h3>
-      <p>Apodo, piel, uniforme y 20 peinados</p>
+      <p>Apodo, piel, uniforme, peinados, rostro y accesorios</p>
     </div>
     <div class="tile solo" id="tile-solo">
       <div class="tico">🎯</div>
@@ -164,6 +173,18 @@
     </div>
   </div>
   <div class="muted" id="net-state">Red: comprobando…</div>
+</div>
+
+<!-- ===================== COMO SE JUEGA ===================== -->
+<div class="screen" id="scr-ayuda">
+  <button class="closeX" id="btn-ayuda-x">✕</button>
+  <h2>CÓMO SE JUEGA</h2>
+  <div class="panel col">
+    <div class="row" id="ayuda-cols" style="align-items:flex-start;gap:20px"></div>
+    <div class="muted" style="font-size:12px;max-width:720px;text-align:center">
+      Las teclas se cambian en ⚙ · OPCIONES DE CONTROL, con una pestaña por jugador.
+    </div>
+  </div>
 </div>
 
 <!-- ===================== MULTIJUGADOR ===================== -->
@@ -362,6 +383,7 @@
     </div>
     <div class="row">
       <button id="btn-pause-keys">CONTROLES</button>
+      <button id="btn-pause-ayuda">CÓMO SE JUEGA</button>
       <button id="btn-pause-menu" class="red">MENÚ PRINCIPAL</button>
     </div>
     <div class="muted" id="pause-note"></div>
@@ -6433,9 +6455,15 @@ function renderMinimap() {
     ctx.fillStyle = t===4 ? '#4a3f52' : (t===2 ? '#6f7480' : (t===3 ? '#a8894f' : '#9a4b3c'));
     ctx.fillRect(x0+x*px, y0+y*px, px, px);
   }
+  const COLPROP = { barrel:'#c0392b', extintor:'#e0524a', crate:'#a5713a',
+                    taquilla:'#3f6f86', mesa:'#7d5a30' };
   for (const pr of G.props) { if (pr.dead) continue;
-    ctx.fillStyle = pr.kind==='barrel' ? '#c0392b' : '#a5713a';
+    ctx.fillStyle = COLPROP[pr.kind] || '#a5713a';
     ctx.fillRect(x0+pr.x*px-px*0.3, y0+pr.y*px-px*0.3, px*0.6, px*0.6); }
+  if (G.nubes) for (const n of G.nubes) {              /* nubes del extintor */
+    ctx.fillStyle = 'rgba(226,228,230,0.30)';
+    ctx.beginPath(); ctx.arc(x0+n.x*px, y0+n.y*px, n.r*px, 0, TAU); ctx.fill();
+  }
   for (const it of G.items) { if (it.taken) continue;
     ctx.fillStyle='#7de08a'; ctx.fillRect(x0+it.x*px-px*0.25, y0+it.y*px-px*0.25, px*0.5, px*0.5); }
   for (const e of G.enemies) {
@@ -6448,9 +6476,10 @@ function renderMinimap() {
     ctx.strokeStyle='#8ce89b'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.arc(x0+MAP.exit.x*px, y0+MAP.exit.y*px, px*1.5, 0, TAU); ctx.stroke();
   }
+  const yoMapa = cam();
   for (const pl of G.players.values()) {
-    ctx.fillStyle = pl.isLocal ? '#ffe45c' : (pl.down ? '#ff5c5c' : '#9fd0ff');
-    if (pl.isLocal) {
+    ctx.fillStyle = pl === yoMapa ? '#ffe45c' : (pl.down ? '#ff5c5c' : (pl.isLocal ? '#a8f0b8' : '#9fd0ff'));
+    if (pl === yoMapa) {
       ctx.beginPath();
       ctx.moveTo(x0+(pl.x+IN.dirX*1.1)*px, y0+(pl.y+IN.dirY*1.1)*px);
       ctx.lineTo(x0+(pl.x-IN.dirY*0.6)*px, y0+(pl.y+IN.dirX*0.6)*px);
@@ -7781,12 +7810,65 @@ $('skin-hex').addEventListener('change', () => {
   renderCharUI(res.corrected ? 'Ese color era frío: ajustado al tono de piel cálido más cercano.'
                              : 'Tono aceptado.');
 });
+/* ---------- como se juega ---------- */
+const AYUDA = [
+  { titulo:'MOVERTE', filas:[
+    ['forward','Avanzar, retroceder y desplazarte con <b>W A S D</b>.'],
+    ['sprint','<b>Sprint</b>: corres un 55% más y no gasta nada.'],
+    ['dash','<b>Esquiva</b>: te lanzas con i-frames. La barra llena da tres seguidas y se rellena sola muy rápido.'],
+    ['crouch','<b>Agacharte</b>: hitbox más pequeña. Corriendo + agacharte hace un <b>deslizamiento</b>.'],
+    ['jump','<b>Saltar</b> para pasar por encima de un charco o esquivar una embestida.']
+  ]},
+  { titulo:'PELEAR', filas:[
+    ['fire','<b>Disparar</b>. Cada arma tiene su cadencia y su retroceso.'],
+    ['alt','<b>Fuego alternativo</b>: tajo pesado, tiro afinado, posta única, ráfaga de 3 o granada de mecha corta.'],
+    ['alt','Con el <b>machete</b>, el tajo abre una <b>parada</b>: las balas que te llegan de frente salen devueltas al doble.'],
+    ['fire','<b>Ejecución</b>: machete a bocajarro sobre alguien tocado o aturdido lo revienta y te cura.'],
+    ['ulti','<b>Furia DUC IN ALTUM</b>: la barra morada se llena al hacer daño. Al soltarla, 7 s de munición infinita, cadencia doble y un aura que quema.'],
+    ['nade','<b>Granada rápida</b> sin cambiar de arma.'],
+    ['reload','<b>Recargar</b>. Con la esquiva y la mejora RECARGA TÁCTICA se rellena sola.']
+  ]},
+  { titulo:'SOBREVIVIR', filas:[
+    ['heal','<b>Cantimplora</b>: te cura, y las cargas se reponen al entrar en cada sala.'],
+    [null,'<b>Barriles</b> explotan, <b>extintores</b> sueltan una nube en la que no te ven, <b>pupitres</b> hacen de parapeto y las <b>taquillas</b> guardan botín.'],
+    [null,'<b>Delegado de clase</b>: no dispara pero acelera a los suyos. Cállalo primero.'],
+    [null,'Cada 5 salas y tras cada jefe eliges una <b>mejora</b>: se acumulan durante la run y se pierden al morir.'],
+    [null,'En cooperativo, quien cae se levanta acercándose y quedándose quieto 4 segundos. Las flechas del borde señalan a los caídos.'],
+    ['map','<b>Mapa</b> de la sala mientras lo mantienes pulsado.']
+  ]}
+];
+function renderAyuda() {
+  const cont = $('ayuda-cols');
+  cont.innerHTML = '';
+  for (const b of AYUDA) {
+    const col = document.createElement('div');
+    col.className = 'ayblk col';
+    const h = document.createElement('h4'); h.textContent = b.titulo;
+    col.appendChild(h);
+    for (const [k, txt] of b.filas) {
+      const fila = document.createElement('div');
+      fila.className = 'ayrow';
+      const tecla = document.createElement('span');
+      tecla.className = 'ayk';
+      tecla.textContent = k ? keyName(KEYS[k]) : '·';
+      const t = document.createElement('span');
+      t.className = 'ayt'; t.innerHTML = txt;
+      fila.appendChild(tecla); fila.appendChild(t);
+      col.appendChild(fila);
+    }
+    cont.appendChild(col);
+  }
+}
+let ayudaVuelve = 'scr-main';
+$('btn-ayuda').onclick = () => { ayudaVuelve = 'scr-main'; renderAyuda(); showScreen('scr-ayuda'); };
+$('btn-ayuda-x').onclick = () => showScreen(ayudaVuelve);
 $('btn-keys').onclick = () => { keysReturn = 'scr-main'; renderKeys(); showScreen('scr-keys'); };
 $('btn-keys-back').onclick = () => {
   if (keysReturn === 'scr-pause') { showScreen('scr-pause'); }
   else showScreen('scr-main');
 };
 $('btn-resume').onclick = () => resumeGame();
+$('btn-pause-ayuda').onclick = () => { ayudaVuelve = 'scr-pause'; renderAyuda(); showScreen('scr-ayuda'); };
 $('btn-pause-keys').onclick = () => { keysReturn = 'scr-pause'; renderKeys(); showScreen('scr-keys'); };
 $('btn-pause-menu').onclick = () => backToMenu();
 $('btn-restart').onclick = () => {
