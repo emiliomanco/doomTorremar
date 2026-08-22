@@ -948,6 +948,44 @@ const Snd = {
     this.tension = tg; this.tensionLfo = plfo;
     this.tensionNivel = 0;
   },
+  /* Melodia corta y sobria para el menu. Se para en cuanto arranca la
+     partida, que en juego manda el zumbido y la tension. */
+  menuOn(){
+    if (!this.on || !this.ac || this.menu) return;
+    const g = this.ac.createGain(); g.gain.value = 0;
+    const f = this.ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+    g.connect(f); f.connect(this.ac.destination);
+    g.gain.setTargetAtTime(0.030*(AJUSTES.vol===undefined?1:AJUSTES.vol), this.ac.currentTime, 1.2);
+    const base = 110;                                    /* la grave */
+    const grados = [0, 3, 7, 10, 12, 10, 7, 3];          /* menor, sin sorpresas */
+    const nota = (semi, dur, vol, tipo) => {
+      const o = this.ac.createOscillator(); o.type = tipo || 'triangle';
+      o.frequency.value = base * Math.pow(2, semi/12);
+      const ng = this.ac.createGain(); ng.gain.value = 0;
+      ng.gain.setTargetAtTime(vol, this.ac.currentTime, 0.04);
+      ng.gain.setTargetAtTime(0.0001, this.ac.currentTime + dur*0.55, dur*0.25);
+      o.connect(ng); ng.connect(g);
+      o.start(); o.stop(this.ac.currentTime + dur + 0.4);
+    };
+    let i = 0;
+    const paso = () => {
+      if (!this.menu) return;
+      nota(grados[i % grados.length], 0.62, 0.22);
+      if (i % 4 === 0) nota(-12, 1.5, 0.30, 'sine');     /* pedal grave cada compas */
+      if (i % 8 === 7) nota(grados[(i+2) % grados.length] + 12, 0.5, 0.10, 'sine');
+      i++;
+    };
+    paso();
+    this.menu = { g, t: setInterval(paso, 620) };
+  },
+  menuOff(){
+    if (!this.menu) return;
+    clearInterval(this.menu.t);
+    try { this.menu.g.gain.setTargetAtTime(0.0001, this.ac.currentTime, 0.25); } catch(e) {}
+    const g = this.menu.g;
+    setTimeout(()=>{ try { g.disconnect(); } catch(e){} }, 1200);
+    this.menu = null;
+  },
   /* 0 = calma, 1 = encima. Se mueve suave para que no de saltos */
   setTension(n, dt) {
     if (!this.on || !this.ac || !this.tension) return;
@@ -4764,7 +4802,8 @@ function initLocal(p) {
   for (let i=0;i<5;i++) if (WEAPONS[i].mag) { p.mags[i] = magSize(p, i); p.ammo[WEAPONS[i].ammo] -= p.mags[i]; }
   p.kick = 0; p.flash = 0; p.pain = 0; p.shake = 0; p.recoil = 0;
   p.pushX = 0; p.pushY = 0; p.sangre = [];
-  p.pitch = 0; p.bob = 0; p.bobT = 0; p.swayX = 0; p.swayY = 0; p.lastAng = p.ang; p.lastPitch = 0;
+  p.pitch = 0; p.recPitch = 0; p.bob = 0; p.bobT = 0; p.swayX = 0; p.swayY = 0;
+  p.lastAng = p.ang; p.lastPitch = 0;
   p.iframe = 0; p.dashCd = 0; p.reviving = null; p.reviveT = 0; p.lastStep = 0; p.beat = 0;
   p.z = 0; p.vz = 0; p.onGround = true; p.crouching = false; p.jumpCd = 0; p.radius = 0.28;
   p.fovK = 1;
@@ -4859,10 +4898,16 @@ function manchaVisor(p, fuerza) {
   p.sangre.push({ x, y, r: rnd(0.09,0.19)*fuerza,
                   i: (Math.random()*4)|0, rot: rnd(0,TAU), t: 0, life: rnd(2.6,4.6) });
 }
-function damagePlayer(p, amount, sx, sy) {
+/* true si esta maquina es la que simula a los enemigos */
+const mando = () => (G.isHost || !NET.online);
+function damagePlayer(p, amount, sx, sy, tipo) {
   if (!p || p.down || !p.alive || G.state !== 'run') return;
   if (p.isLocal) {
     if (p.iframe > 0) return;
+    /* la resistencia la aplica cada uno sobre si mismo: el anfitrion no
+       conoce las mejoras de los demas */
+    if (tipo === 'veneno') amount *= (1 - p.up.poisonRes);
+    if (amount <= 0) return;
     if (p.armor > 0) { const abs = Math.min(p.armor, amount*0.5); p.armor -= abs; amount -= abs; }
     if (p.hp - amount <= 0 && p.up.cheatDeath > p.usedCheat) {
       p.usedCheat++; p.hp = 1; p.pain = 1; addMsg('💀 ENGAÑAS A LA MUERTE (1 PV)', '#ff5c5c'); Snd.roar();
@@ -4884,7 +4929,12 @@ function damagePlayer(p, amount, sx, sy) {
     Snd.hurt();
     if (p.hp <= 0) goDown(p);
     NET.send({ t:'hp', id:p.id, hp:Math.max(0,p.hp), down:p.down });
-  } else {
+  } else if (mando()) {
+    /* Los enemigos solo viven en el anfitrion, asi que es el quien decide
+       que le pasa a los jugadores de las otras pantallas. Se lo manda a su
+       dueno, que es quien de verdad lleva su vida, y de paso se apunta el
+       golpe en el espejo local para que la barra no vaya un tick tarde. */
+    NET.aQuien(p.id, { t:'pdmg', id:p.id, dmg:amount, sx, sy, k:tipo });
     p.hp = Math.max(0, p.hp - amount);
     if (p.hp <= 0) p.down = true;
   }
@@ -4947,18 +4997,19 @@ function fire(p, alt) {
   alertNoise(w.noise, p);
   if (w.cross === 'rifle') {
     p.recoil = Math.min(1, p.recoil + 0.20);
-    p.pitch = clamp(p.pitch + 5*view.s*(0.6+p.recoil), -view.v3*0.30, view.v3*0.30);  /* el cañon sube */
+    culatazo(p, 3.4*(0.6+p.recoil));                     /* el cañon sube */
   } else if (w.cross === 'shotgun') {
     p.recoil = Math.min(1, p.recoil + 0.5);
     p.shake = Math.min(16, p.shake + 5);
-    p.pitch = clamp(p.pitch + 16*view.s, -view.v3*0.30, view.v3*0.30);
+    culatazo(p, 13);
     moveEnt(p, -IN.dirX*0.14, -IN.dirY*0.14);            /* culatazo hacia atras */
   } else if (w.cross === 'pistol') {
-    p.pitch = clamp(p.pitch + 6*view.s, -view.v3*0.30, view.v3*0.30);
+    culatazo(p, 5);
   }
 
   if (w.proj) {                                          /* granada con fisica */
-    const vz = alt ? 2.4 : 3.0, vel = w.fuerza || 7.2, mecha = w.mecha || 2.2;
+    const vel = w.fuerza || 7.2, mecha = w.mecha || 2.2;
+    const vz = (alt ? 2.4 : 3.0) + pendienteMira(p)*vel*1.25;   /* apuntar arriba la manda mas lejos */
     G.projectiles.push({ id:entId++, x:p.x+IN.dirX*0.4, y:p.y+IN.dirY*0.4,
       vx:IN.dirX*vel, vy:IN.dirY*vel, vz, z:0.75, grav:1, dmg:0, r:0.16, spr:'nade',
       from:'player', owner:p.id, life:9, fuse:mecha, bounces:6, scale:0.30 });
@@ -4997,8 +5048,10 @@ function fire(p, alt) {
     : w;
   const pellets = esp === 'disper' ? w.pellets*3 : w.pellets;
   const disp = esp === 'disper' ? spread*2.2 + 0.05 : spread;
+  const kMira = pendienteMira(p);
   for (let i=0;i<pellets;i++)
-    hitscan(p, p.ang + rnd(-disp, disp), wDisparo, null, null, esp);
+    hitscan(p, p.ang + rnd(-disp, disp), wDisparo, null, null, esp,
+            kMira + rnd(-disp, disp)*0.9);
   if (w.zoom) p.zoomT = 0.34;                            /* la mira se cierra un instante */
   if (w.rafaga && !p.burstLeft && !p.inBurst) {          /* el resto de la rafaga sale sola */
     p.burstLeft = w.rafaga - 1; p.burstT = 0.065; p.burstAlt = 1;
@@ -5151,20 +5204,54 @@ function tickFuego(e, dt) {
   }
   if (e.fuego <= 0) e.fuego = 0;
 }
+/* El arma sube al disparar, pero la vista vuelve sola a donde apuntabas:
+   con el disparo ya respetando la vertical, si no volviera seria imposible
+   mantener una rafaga sobre el mismo blanco. */
+function culatazo(p, px) {
+  const sube = px * view.s;
+  p.pitch = clamp(p.pitch + sube, -view.v3*0.30, view.v3*0.30);
+  p.recPitch = (p.recPitch || 0) + sube;
+}
+/* ---------------------------------------------------------------------
+   PUNTERIA VERTICAL
+   El pitch va en pixeles (lo que se desplaza el horizonte). El render
+   coloca un punto de altura z a distancia d en
+       y = horizonte + (H/d)*(camZ - z)
+   asi que la mira, que esta clavada en el centro de la pantalla, apunta a
+       z(d) = camZ + pitch*d/H
+   Esa es exactamente la pendiente que tiene que seguir la bala.
+   --------------------------------------------------------------------- */
+const TECHO_TIRO = 2.2;                                 /* por encima, la bala se pierde */
+function pendienteMira(p) { return (p.pitch || 0) / Math.max(1, view.v3); }
+const alturaOjos = (p) => 0.5 + (p.z || 0);
 /* estela luminosa del disparo, del canon al impacto */
-function trazador(p, x0, y0, x1, y1, kind) {
+function trazador(p, x0, y0, x1, y1, kind, z1) {
   if (!G.trazas) G.trazas = [];
   if (G.trazas.length > 26) G.trazas.shift();
   const ddx = x1-x0, ddy = y1-y0, dl = Math.hypot(ddx,ddy) || 1;
   const rx = -ddy/dl, ry = ddx/dl;                      /* sale por el lado del arma */
-  G.trazas.push({ x0: x0 + rx*0.34 + ddx/dl*0.34, y0: y0 + ry*0.34 + ddy/dl*0.34,
-                  z0: 0.30 + (p.z||0),
-                  x1, y1, z1: 0.5 + (p.z||0), t: 0, life: kind === 'shotgun' ? 0.07 : 0.11,
-                  gordo: kind === 'shotgun' ? 0.5 : 1 });
+  let zf = (z1 === undefined ? alturaOjos(p) : z1), xf = x1, yf = y1;
+  if (zf > 0.98) {                                      /* no atraviesa el techo */
+    const z0v = alturaOjos(p), k = (zf - z0v) / (dl || 1);
+    const corte = k > 0.0001 ? clamp((0.98 - z0v)/k, 0, dl) : dl;
+    xf = x0 + ddx/dl*corte; yf = y0 + ddy/dl*corte; zf = 0.98;
+  }
+  G.trazas.push({ x0: x0 + rx*0.30 + ddx/dl*0.40, y0: y0 + ry*0.30 + ddy/dl*0.40,
+                  z0: alturaOjos(p) - 0.12,
+                  x1: xf, y1: yf, z1: zf, t: 0, life: kind === 'shotgun' ? 0.07 : 0.11,
+                  gordo: kind === 'shotgun' ? 0.5 : 1, by: p.id });
 }
-function hitscan(p, ang, w, salta, mengua, esp) {
+function hitscan(p, ang, w, salta, mengua, esp, sube) {
   const dx = Math.cos(ang), dy = Math.sin(ang);
-  const wallD = rayWall(p.x, p.y, dx, dy, w.range);
+  /* pendiente y altura de salida: el machete es un mandoble, no mira arriba */
+  const cuerpo = (p.weapon === 0);
+  const k  = cuerpo ? 0 : (sube === undefined ? pendienteMira(p) : sube);
+  const z0 = alturaOjos(p);
+  const zEn = (t) => z0 + k*t;                          /* altura de la bala a distancia t */
+  let alcance = w.range;
+  if (k > 0.0001) alcance = Math.min(alcance, (TECHO_TIRO - z0)/k);
+  else if (k < -0.0001) alcance = Math.min(alcance, (0 - z0)/k);
+  const wallD = Math.min(rayWall(p.x, p.y, dx, dy, w.range), alcance);
   let best = null, bestT = wallD, bestAlly = null;
   for (const e of G.enemies) {
     if (!e.alive) continue;
@@ -5173,6 +5260,7 @@ function hitscan(p, ang, w, salta, mengua, esp) {
     if (t <= 0.05 || t > bestT) continue;
     const px = ex-dx*t, py = ey-dy*t, rr = e.radius*(e.boss?1.2:1.05);
     if (px*px+py*py > rr*rr) continue;
+    if (!cuerpo) { const z = zEn(t); if (z < -0.03 || z > e.scaleY*1.03) continue; }
     best = e; bestT = t; bestAlly = null;
   }
   for (const a of G.players.values()) {                   /* posible fuego amigo */
@@ -5181,6 +5269,7 @@ function hitscan(p, ang, w, salta, mengua, esp) {
     if (t <= 0.05 || t > bestT) continue;
     const px = ex-dx*t, py = ey-dy*t;
     if (px*px+py*py > 0.13) continue;
+    if (!cuerpo) { const z = zEn(t); if (z < -0.03 || z > 0.72*PSY) continue; }
     bestAlly = a; best = null; bestT = t;
   }
   let bestProp = null;
@@ -5190,10 +5279,11 @@ function hitscan(p, ang, w, salta, mengua, esp) {
     if (t <= 0.05 || t > bestT) continue;
     const px = ex-dx*t, py = ey-dy*t;
     if (px*px+py*py > pr.radius*pr.radius) continue;
+    if (!cuerpo) { const z = zEn(t); if (z < -0.03 || z > (pr.def ? pr.def.scaleY : 1)*1.05) continue; }
     bestProp = pr; bestT = t; best = null; bestAlly = null;
   }
-  const hx = p.x+dx*bestT, hy = p.y+dy*bestT;
-  if (p.weapon !== 0) trazador(p, p.x, p.y, hx, hy, w.cross);
+  const hx = p.x+dx*bestT, hy = p.y+dy*bestT, hz = zEn(bestT);
+  if (p.weapon !== 0) trazador(p, p.x, p.y, hx, hy, w.cross, hz);
   if (bestProp) {
     hurtProp(bestProp, w.dmg * (p.weapon===0 ? (1+p.up.melee) : 1), p.id);
     p.hitMark = 0.16;
@@ -5223,12 +5313,9 @@ function hitscan(p, ang, w, salta, mengua, esp) {
     if (mengua) dmg *= mengua;                          /* pierde fuerza al atravesar */
     let crit = false;
     if (Math.random() < u.crit) { crit = true; dmg *= 2; spawnParts('spark', best.x, best.y, 0.8, 6, 2, 2, 0.4); }
-    /* ---- disparo a la cabeza: la mira cae en la franja alta del sprite ---- */
+    /* ---- disparo a la cabeza: la bala pasa por el cuarto de arriba ---- */
     let head = false;
-    if (p.weapon !== 0 && best._sf >= G.frames-1 && best._sh > 6) {
-      const cy = view.v3*0.5, band = best._sy0 + best._sh*0.26;
-      if (cy >= best._sy0 && cy <= band) head = true;
-    }
+    if (!cuerpo && hz >= best.scaleY*0.74) head = true;
     if (head) {
       dmg *= best.boss ? 1.45 : 1.85;
       G.heads++;
@@ -5262,7 +5349,7 @@ function hitscan(p, ang, w, salta, mengua, esp) {
     if (w.perfora) {                                    /* la posta sigue de largo */
       const s2 = salta || new Set();
       s2.add(best.id);
-      if (s2.size <= w.perfora) hitscan(p, ang, w, s2, (mengua||1)*0.62, esp);
+      if (s2.size <= w.perfora) hitscan(p, ang, w, s2, (mengua||1)*0.62, esp, k);
     }
   } else {
     spawnFX('spark', hx-dx*0.05, hy-dy*0.05, 0.3, 0.2);
@@ -5347,9 +5434,11 @@ function updateProjectiles(dt) {
         dead = true; break;
       }
       p.x = nx; p.y = ny;
-      if (p.from === 'enemy') {
-        for (const lp of G.players.values()) {           /* alcanza a cualquier local */
-          if (!lp.isLocal || lp.down) continue;
+      /* el reparto de dano lo lleva quien simula a los enemigos; en el
+         cliente estos proyectiles son solo pintura y llegan con dmg 0 */
+      if (p.from === 'enemy' && mando()) {
+        for (const lp of G.players.values()) {           /* alcanza a todos los que lleva esta maquina */
+          if (lp.down) continue;
           const bodyZ = 0.55 + (lp.z||0);
           const zTol = lp.crouching ? 0.30 : 0.48;
           if (dist2(p.x,p.y,lp.x,lp.y) < 0.14 && Math.abs((p.z||0.5) - bodyZ) < zTol) {
@@ -5369,10 +5458,10 @@ function updateProjectiles(dt) {
     q.tick = (q.tick||0) - dt;
     const pica = q.tick <= 0;
     if (pica) q.tick = 0.5;
-    for (const lp of G.players.values()) {
-      if (!lp.isLocal || lp.down || !lp.up) continue;
+    if (mando()) for (const lp of G.players.values()) {
+      if (lp.down) continue;                            /* el espejo remoto no trae mejoras */
       if (pica && dist(q.x,q.y,lp.x,lp.y) < q.r)
-        damagePlayer(lp, q.dmg*0.5*(1-lp.up.poisonRes), q.x, q.y);
+        damagePlayer(lp, q.dmg*0.5, q.x, q.y, 'veneno');
     }
     if (Math.random() < dt*6) spawnParts('venom', q.x+rnd(-q.r*0.6,q.r*0.6), q.y+rnd(-q.r*0.6,q.r*0.6), 0.06, 1, 0.2, 0.6, 0.8);
   }
@@ -5430,7 +5519,13 @@ function updateLocal(p, dt) {
     if (p.buffs[k] <= 0) { delete p.buffs[k]; addMsg('SE PASA EL EFECTO', '#9aa0a6'); }
   }
   p.recoil = Math.max(0, p.recoil - dt*(p.cool>0?0.35:1.5));
-  p.pitch *= (1-dt*0.7);
+  if (p.recPitch) {                                     /* la vista baja de vuelta al blanco */
+    const vuelve = Math.min(Math.abs(p.recPitch),
+                            Math.abs(p.recPitch)*dt*7 + 14*view.s*dt) * Math.sign(p.recPitch);
+    p.recPitch -= vuelve;
+    p.pitch = clamp(p.pitch - vuelve, -view.v3*0.30, view.v3*0.30);
+    if (Math.abs(p.recPitch) < 0.05) p.recPitch = 0;
+  }
   /* el arma se queda atras al girar y vuelve al centro */
   let dAng = p.ang - (p.lastAng === undefined ? p.ang : p.lastAng);
   if (dAng > Math.PI) dAng -= TAU; else if (dAng < -Math.PI) dAng += TAU;
@@ -5652,7 +5747,7 @@ function spawnProps() {
     const sp = spots.splice((Math.random()*spots.length)|0, 1)[0];
     const kind = pick(bolsa);
     const d = PROPS[kind];
-    G.props.push({ id:entId++, kind, x:sp.x, y:sp.y, hp:d.hp, maxhp:d.hp, radius:d.radius, flash:0, dead:false });
+    G.props.push({ id:entId++, kind, x:sp.x, y:sp.y, hp:d.hp, maxhp:d.hp, radius:d.radius, def:d, flash:0, dead:false });
   }
 }
 /* adornos: solo decoran, no chocan ni se rompen */
@@ -6130,6 +6225,13 @@ const NET = {
     const c = this.conns.get(id);
     if (c && c.open) { try { c.send(JSON.stringify(msg)); } catch(e){} }
   },
+  /* al dueno de ese jugador y a nadie mas; si no hay linea directa, a todos */
+  aQuien(pid, msg) {
+    if (!this.online) return;
+    const c = this.conns.get(baseDeId(pid));
+    if (c && c.open) { try { c.send(JSON.stringify(msg)); return; } catch(e){} }
+    this.send(msg);
+  },
   reset() {                                             /* deja el peer limpio para reintentar */
     try { if (this.peer) this.peer.destroy(); } catch(e) {}
     this.peer = null; this.conns.clear(); this.online = false; this.isHost = false; this.code = '';
@@ -6305,7 +6407,7 @@ function applySnapshot(m) {
     for (const a of m.pr) {
       if (G.props.some(o=>o.id===a[0])) continue;
       const kind = PROP_LIST[a[1]] || 'crate', d = PROPS[kind];
-      G.props.push({ id:a[0], kind, x:a[2]/50, y:a[3]/50, hp:d.hp, maxhp:d.hp, radius:d.radius, flash:0, dead:false });
+      G.props.push({ id:a[0], kind, x:a[2]/50, y:a[3]/50, hp:d.hp, maxhp:d.hp, radius:d.radius, def:d, flash:0, dead:false });
     }
   }
   G.portalOn = !!m.ps;
@@ -6390,7 +6492,10 @@ function onNet(from, m) {
     case 'world': if (!G.isHost) applySnapshot(m); break;
     case 'pstate': {
       const p = G.players.get(m.id);
-      if (p && !p.isLocal) { p.tx=m.x; p.ty=m.y; p.tang=m.a; p.weapon=m.w; p.walk=m.k; p.down=!!m.d; p.hp=m.h; p.anim=m.n?0.25:0; }
+      if (p && !p.isLocal) { p.tx=m.x; p.ty=m.y; p.tang=m.a; p.weapon=m.w; p.walk=m.k;
+                             p.down=!!m.d; p.hp=m.h; p.anim=m.n?0.25:0;
+                             if (m.mh) p.maxhp = m.mh;
+                             if (m.ar !== undefined) p.armor = m.ar; }
       if (G.isHost) relay(from, m);
       break;
     }
@@ -6410,7 +6515,7 @@ function onNet(from, m) {
     case 'upgOpen': if (!G.isHost) openUpgrades(); break;
     case 'pdmg': {
       const p = G.players.get(m.id);
-      if (p && p.isLocal) damagePlayer(p, m.dmg);
+      if (p && p.isLocal) damagePlayer(p, m.dmg, m.sx, m.sy, m.k);
       else if (G.isHost) relay(from, m);
       break;
     }
@@ -6700,8 +6805,7 @@ function collectSprites() {
                   flash:0, alpha:0.30 + 0.18*Math.sin(G.time*9), raw:true });
     }
     list.push({ x:e.x, y:e.y, tex, sx, sy, alpha, flash:e.flash>0?0.55:0, anchor:'floor', lift:0,
-                tag:(e.boss||e.mini)?e.def.name:(e.elite&&e.alive?'★ '+e.def.name:null), boss:e,
-                ent:e.alive?e:null });
+                tag:(e.boss||e.mini)?e.def.name:(e.elite&&e.alive?'★ '+e.def.name:null), boss:e });
   }
   const yoCam = cam();
   for (const pl of G.players.values()) {
@@ -6829,7 +6933,6 @@ function renderSprites() {
     let vis = false;
     for (let c=c0;c<=c1;c++) if (zbuf[c] >= ty) { vis = true; break; }
     if (!vis) continue;
-    if (s.ent) { s.ent._sy0 = top; s.ent._sh = sh; s.ent._sf = G.frames; }  /* banda para el disparo a la cabeza */
     let fog = clamp((ty*lightK*fogMul-3)/22, 0, 0.72);
     if (LA.length && !s.raw) fog = clamp(fog - gridLight(s.x, s.y)*0.42, 0, 0.72);
     const tex = s.raw ? s.tex : tinted(s.tex, fog, s.flash||0);
@@ -6893,7 +6996,8 @@ function renderNadeArc() {                              /* vista previa del lanz
   let x = p.x + IN.dirX*0.4, y = p.y + IN.dirY*0.4, z = 0.75 + (p.z||0);
   const altN = down('alt');                             /* la parabola sigue el modo elegido */
   const velN = altN ? (ALT[4].fuerza || 7.2) : 7.2;
-  let vx = IN.dirX*velN, vy = IN.dirY*velN, vz = altN ? 2.4 : 3.0;
+  let vx = IN.dirX*velN, vy = IN.dirY*velN;
+  let vz = (altN ? 2.4 : 3.0) + pendienteMira(p)*velN*1.25;
   const dt = 1/30, pts = [];
   for (let i=0;i<44;i++) {
     vz -= 9.5*dt; z += vz*dt;
@@ -6957,9 +7061,13 @@ function renderTrazas() {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
+  const boca = (p.down || p.switching > 0) ? null : bocaArma(p);
   for (const t of G.trazas) {
-    const a = proy(t.x0, t.y0, t.z0), b = proy(t.x1, t.y1, t.z1);
-    if (!a || !b) continue;
+    let a = proy(t.x0, t.y0, t.z0);
+    const b = proy(t.x1, t.y1, t.z1);
+    if (!b) continue;
+    if (t.by === p.id && boca) a = { x:boca.x, y:boca.y };  /* sale del canon que se ve */
+    if (!a) continue;
     const col = clamp((b.x/COL_W)|0, 0, COLS-1);
     if (zbuf[col] < b.d - 0.4) continue;                 /* tapada por una pared */
     const k = 1 - t.t/t.life;
@@ -7085,35 +7193,75 @@ function renderMotes() {
 }
 
 /* ------------------- armas en primera persona (abajo dcha) ----------- */
-function renderWeapon() {
-  const p = cam(); if (!p || p.down) return;
+/* Donde cae el arma en pantalla. Lo usan el dibujo y las estelas, para que
+   la traza salga justo de la boca del canon y no de la nada. */
+function poseArma(p) {
   const W = view.w, H = view.v3, s = view.s*1.52;
-  const bobX = Math.sin(p.bobT*0.5)*11*s*Math.abs(p.bob);
-  const bobY = Math.abs(Math.cos(p.bobT*0.5))*9*s*Math.abs(p.bob);
+  const quieto = clamp(1 - Math.abs(p.bob)*2.2, 0, 1);
+  const resp = performance.now()/1000;
+  const bobX = Math.sin(p.bobT*0.5)*11*s*Math.abs(p.bob) + Math.sin(resp*1.15)*3.2*s*quieto;
+  const bobY = Math.abs(Math.cos(p.bobT*0.5))*9*s*Math.abs(p.bob)
+             + Math.sin(resp*2.30 + 0.6)*2.6*s*quieto;
   let downOff = p.kick*s*0.9;
   if (p.switching > 0) { const k = p.switching<1 ? p.switching : 2-p.switching; downOff += k*H*0.55; }
-  /* recarga: el arma baja, se inclina y vuelve */
   let tiltR = 0;
-  if (p.reloadT > 0 && p.reloadMax > 0) {
-    const kr = 1 - p.reloadT/p.reloadMax;                /* 0 al empezar, 1 al acabar */
+  if (p.reloadT > 0 && p.reloadMax > 0) {               /* recarga: baja, se inclina y vuelve */
+    const kr = 1 - p.reloadT/p.reloadMax;
     const curva = Math.sin(clamp(kr,0,1)*Math.PI);
     downOff += curva*H*0.30;
     tiltR = curva*0.42;
   }
-  const cx = W*0.79 + bobX + p.swayX*view.s;             /* esquina inferior derecha */
-  const base = H - 8*s - downOff + bobY + p.swayY*view.s;
+  return { s, tiltR,
+           cx: W*0.79 + bobX + p.swayX*view.s,          /* esquina inferior derecha */
+           base: H - 8*s - downOff + bobY + p.swayY*view.s };
+}
+/* Boca del canon en coordenadas de pantalla, arma a arma. */
+const BOCAS = [ null,
+  { tx:-6, ty:-118, rot:-0.30,  mx:6, my:-122 },        /* GLOCK */
+  { tx:-4, ty:-128, rot:-0.42,  mx:6, my:-218 },        /* REMINGTON */
+  { tx:-2, ty:-124, rot:-0.40,  mx:7, my:-212 },        /* M16 */
+  null ];
+function bocaArma(p) {
+  const b = BOCAS[p.weapon]; if (!b) return null;
+  const po = poseArma(p), s = po.s;
+  const rot = po.tiltR + b.rot - (p.weapon === 3 ? p.recoil*0.09 : 0);
+  /* el translate del arma tambien gira con el tilt de recarga */
+  const c = Math.cos(po.tiltR), sn = Math.sin(po.tiltR);
+  const tX = b.tx*s*c - b.ty*s*sn, tY = b.tx*s*sn + b.ty*s*c;
+  const c2 = Math.cos(rot), s2 = Math.sin(rot);
+  return { x: po.cx + tX + b.mx*s*c2 - b.my*s*s2,
+           y: po.base + tY + b.mx*s*s2 + b.my*s*c2 };
+}
+function renderWeapon() {
+  const p = cam(); if (!p || p.down) return;
+  const W = view.w, H = view.v3;
+  const po = poseArma(p), s = po.s, cx = po.cx, base = po.base, tiltR = po.tiltR;
   ctx.save(); ctx.translate(cx, base);
   if (tiltR) ctx.rotate(tiltR);
   ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(0, 10*s, 150*s, 22*s, 0, 0, TAU); ctx.fill(); ctx.restore();
   const metal = (x0,x1,a,b,c2) => { const g = ctx.createLinearGradient(x0,0,x1,0);
     g.addColorStop(0,a); g.addColorStop(0.45,b); g.addColorStop(1,c2||a); return g; };
+  /* la mano es la del personaje: mismo tono de piel, con luz y sombra */
+  const piel   = p.skin || SKINS[2];
+  const pielLuz= shade(piel, 1.14), pielSom = shade(piel, 0.78);
+  const uña    = shade(piel, 0.90);
+  const ropa = (OUTFITS[p.fit|0] || OUTFITS[0]);
   const hand = (x,y,w,h,rot) => {
     ctx.save(); ctx.translate(x,y); if (rot) ctx.rotate(rot);
-    roundRect(ctx,-w/2,-h/2,w,h,w*0.3,'#e8b98f');
-    ctx.fillStyle = '#c99a72';
+    roundRect(ctx,-w*0.54,h*0.24,w*1.08,h*0.46,w*0.20, shade(ropa.shirt,0.90));  /* puño */
+    ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(-w*0.54,h*0.24,w*1.08,h*0.09);
+    const g = ctx.createLinearGradient(-w/2,0,w/2,0);
+    g.addColorStop(0, pielSom); g.addColorStop(0.42, pielLuz); g.addColorStop(1, shade(piel,0.86));
+    roundRect(ctx,-w/2,-h/2,w,h,w*0.3,g);
+    ctx.fillStyle = pielSom;                             /* separacion de los dedos */
     for (let i=1;i<4;i++) ctx.fillRect(-w/2+w*0.1, -h/2+(h*0.22)*i, w*0.8, Math.max(1,h*0.018));
-    roundRect(ctx,-w*0.62,-h*0.1,w*0.3,h*0.42,w*0.14,'#e8b98f');
+    ctx.fillStyle = uña;                                 /* nudillos */
+    for (let i=0;i<4;i++) { ctx.beginPath();
+      ctx.ellipse(w*0.02, -h/2+(h*0.22)*(i+0.5), w*0.30, h*0.045, 0, 0, TAU); ctx.fill(); }
+    roundRect(ctx,-w*0.62,-h*0.1,w*0.3,h*0.42,w*0.14, shade(piel,1.04));   /* pulgar */
+    ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=Math.max(1,w*0.035);
+    ctx.beginPath(); ctx.moveTo(-w*0.62,-h*0.1+h*0.42); ctx.lineTo(-w*0.32,-h*0.1+h*0.42); ctx.stroke();
     ctx.restore();
   };
   const flash = p.flash > 0;
@@ -7906,6 +8054,8 @@ function showScreen(id) {
   document.body.classList.toggle('free', !!id);
   if (id && document.pointerLockElement) document.exitPointerLock();
   if (id === 'scr-main') { renderHomePreview(); renderResumenMenu(); }
+  /* la melodia solo suena fuera de la partida */
+  if (id && G.state !== 'run' && G.state !== 'cine') Snd.menuOn(); else Snd.menuOff();
 }
 function renderLobby() {
   const online = NET.online, local = !!G.local || LOC.length > 1;
@@ -8688,6 +8838,7 @@ function beginRun(room, seed, horda) {
   for (const q of localesVivos()) { initLocal(q); q.alive = true; q.down = false; }
   for (const q of G.players.values()) { q.alive = true; q.down = false; q.hp = q.maxhp || 100; }
   showScreen(null);
+  Snd.menuOff();
   if (G.horda) empezarHorda(seed); else startRoom(room, seed);
   lockPointer();
 }
@@ -9320,7 +9471,8 @@ function frame(now) {
         G.netT = 1/15;
         for (const q of localesVivos())                  /* todos los de este sofa */
           NET.send({ t:'pstate', id:q.id, x:+q.x.toFixed(2), y:+q.y.toFixed(2), a:+q.ang.toFixed(3),
-                     w:q.weapon, k:(q.walk|0)&3, d:q.down?1:0, h:Math.round(q.hp), n:q.cool>0?1:0 });
+                     w:q.weapon, k:(q.walk|0)&3, d:q.down?1:0, h:Math.round(q.hp),
+                     mh:Math.round(q.maxhp), ar:Math.round(q.armor||0), n:q.cool>0?1:0 });
         const every = G.players.size > 4 ? 3 : 2;         /* menos ancho de banda con lobby lleno */
         if (G.isHost && (G.seq++ % every === 0)) NET.send(worldSnapshot());
       }
