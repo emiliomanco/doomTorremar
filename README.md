@@ -58,8 +58,17 @@ los jefes.
 | Pausa | Esc | Start |
 
 Todo se puede reasignar en **⚙ Controles y opciones**, que además tiene ajustes
-de confort: sacudida de cámara, destellos, sangre en el visor, grano de imagen,
-tamaño del HUD, volumen y mira de alto contraste.
+de confort: calidad gráfica, sacudida de cámara, destellos, sangre en el visor,
+grano de imagen, tamaño del HUD, volumen y mira de alto contraste.
+
+La **calidad gráfica** viene en AUTO: el juego mide su propio fotograma y sube o
+baja solo la resolución interna, las columnas de pared, el detalle del suelo, el
+polvo y los adornos. También se puede clavar en ALTA, MEDIA o BAJA.
+
+El disparo va a donde apunta la mira, también en vertical: la bala sigue la
+pendiente de la vista, comprueba a qué altura del enemigo llega y se para en el
+techo. El cuarto superior del sprite es disparo a la cabeza. El retroceso sube
+el arma y la vista vuelve sola al blanco.
 
 ## Mecánicas
 
@@ -87,9 +96,11 @@ y Jorge Coronel.
 
 ## Personalización
 
-Apodo, tono de piel, cuatro uniformes, 22 peinados con color libre, 12
+Apodo, tono de piel, dos uniformes del colegio, 22 peinados con color libre, 12
 expresiones faciales, 15 cosas para la cabeza, 9 gafas y 9 tipos de vello
-facial, con color de accesorio propio. Todo se guarda y viaja por la red.
+facial. El gorro y las gafas llevan **cada uno su color**, con rueda de tono,
+cuadro de saturación y luminosidad, preajustes y HEX. Todo se guarda y viaja por
+la red, y el tono de piel también se ve en la mano que sostiene el arma.
 
 ## Marcas
 

@@ -580,9 +580,9 @@ function saveAjustes() { try { localStorage.setItem('torremar.opts', JSON.string
    --------------------------------------------------------------------- */
 const CAL_NOM = ['AUTO', 'ALTA', 'MEDIA', 'BAJA'];
 const CAL_ESC = [ null,
-  { col:1.00, piso:1.00, motas:1.00, deco:1.00 },
-  { col:1.35, piso:1.35, motas:0.50, deco:0.65 },
-  { col:1.90, piso:1.80, motas:0.15, deco:0.35 } ];
+  { col:1.00, piso:1.00, motas:1.00, deco:1.00, extras:1.00, chispas:1.00, res:1.00 },
+  { col:1.35, piso:1.30, motas:0.50, deco:0.65, extras:0.60, chispas:0.60, res:0.85 },
+  { col:1.85, piso:1.75, motas:0.15, deco:0.35, extras:0.00, chispas:0.35, res:0.70 } ];
 let calNivel = 1, calSerie = 0, calMs = 16.7, calT = 0, calAviso = 0;
 const calidad = () => CAL_ESC[calNivel] || CAL_ESC[1];
 function ponerCalidad(n) {
@@ -590,6 +590,7 @@ function ponerCalidad(n) {
   if (n === calNivel) return;
   calNivel = n; calSerie++;
   fbuf.cnv = null;                                      /* el buffer del suelo cambia de tamano */
+  if (typeof resize === 'function' && cv) resize();     /* y el lienzo cambia de resolucion */
   if (calAviso) addMsg('CALIDAD GRÁFICA: ' + CAL_NOM[n], '#9fd0ff');
   calAviso = 1;
 }
@@ -908,9 +909,12 @@ let litL = new Float32Array(1), litY0 = new Float32Array(1), litY1 = new Float32
 let litW = new Float32Array(1);
 const MAX_BACKING = 2400;
 function resize() {
-  let dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+  /* La resolucion interna es la palanca gorda: pintar a menos pixeles baja
+     el coste de todo a la vez. El lienzo sigue ocupando la ventana entera,
+     solo que el navegador lo estira. */
+  let dpr = clamp(window.devicePixelRatio || 1, 1, 2) * calidad().res;
   if (window.innerWidth * dpr > MAX_BACKING) dpr = MAX_BACKING / window.innerWidth;
-  dpr = Math.max(1, dpr);
+  dpr = Math.max(0.6, dpr);
   cv.width = Math.max(320, Math.floor(window.innerWidth * dpr));
   cv.height = Math.max(240, Math.floor(window.innerHeight * dpr));
   cv.style.width = window.innerWidth + 'px';
@@ -4047,16 +4051,17 @@ function makePlayer(id, nick, skin, order, fit, hair, hairCol, rasgos) {
 }
 /* --------------------------- particulas ------------------------------ */
 const PART_MAX = 190;
+const partMax = () => Math.round(PART_MAX * calidad().chispas);
 function ejectCasing(p, kind) {                        /* casquillo saliendo a la derecha */
   const rx = -IN.dirY, ry = IN.dirX;
   G.parts.push({ kind, x: p.x + rx*0.25 + IN.dirX*0.2, y: p.y + ry*0.25 + IN.dirY*0.2,
     z: 0.62 + (p.z||0), vx: rx*rnd(1.4,2.4) + IN.dirX*rnd(-0.3,0.6), vy: ry*rnd(1.4,2.4) + IN.dirY*rnd(-0.3,0.6),
     vz: rnd(1.2,2.2), life: rnd(1.4,2.2), max:2.2, size: rnd(0.8,1.2), spin: rnd(0,TAU) });
-  if (G.parts.length > PART_MAX) G.parts.shift();
+  if (G.parts.length > partMax()) G.parts.shift();
 }
 function spawnParts(kind, x, y, z, n, spread, up, life) {
   for (let i=0;i<n;i++) {
-    if (G.parts.length >= PART_MAX) G.parts.shift();
+    if (G.parts.length >= partMax()) G.parts.shift();
     const a = rnd(0,TAU), sp = rnd(0.2,1)*spread;
     G.parts.push({ kind, x, y, z, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, vz:rnd(0.2,1)*up,
                    life:rnd(0.5,1)*life, max:life, size:rnd(0.6,1.4),
@@ -4066,7 +4071,7 @@ function spawnParts(kind, x, y, z, n, spread, up, life) {
 /* trozos de carne y hueso que van dejando gotas por el camino */
 function spawnGibs(x, y, n, fuerza) {
   for (let i=0;i<n;i++) {
-    if (G.parts.length >= PART_MAX) G.parts.shift();
+    if (G.parts.length >= partMax()) G.parts.shift();
     const a = rnd(0,TAU), sp = rnd(0.45,1)*fuerza;
     G.parts.push({ kind: Math.random()<0.78 ? 'gib' : 'bone', x, y, z: 0.6+rnd(-0.2,0.4),
                    vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, vz:rnd(0.3,0.8)*fuerza*0.45,
@@ -5040,7 +5045,7 @@ function fire(p, alt) {
                      vx: IN.dirX*rnd(0.5,1.4) + rx*rnd(-0.2,0.2),
                      vy: IN.dirY*rnd(0.5,1.4) + ry*rnd(-0.2,0.2),
                      vz: rnd(0.35,0.75), life: rnd(0.5,0.95), max:1.0, size: rnd(0.4,0.8) });
-      if (G.parts.length > PART_MAX) G.parts.shift();
+      if (G.parts.length > partMax()) G.parts.shift();
     }
   }
   let spread = w.spread;
@@ -5806,7 +5811,7 @@ function nubeExtintor(x, y) {
   if (G.nubes.length > 6) G.nubes.shift();
   G.nubes.push({ x, y, r: 2.9, t: 0, life: 6.5 });
   for (let i=0;i<26;i++) {
-    if (G.parts.length >= PART_MAX) G.parts.shift();
+    if (G.parts.length >= partMax()) G.parts.shift();
     const a = rnd(0,TAU), sp = rnd(0.4,1)*3.4;
     G.parts.push({ kind:'dust', x, y, z: rnd(0.15,0.9),
                    vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, vz: rnd(0.2,1.1),
@@ -6808,7 +6813,8 @@ function collectSprites() {
              sx = e.scaleX*(e.gib?1.6:1.3); sy = e.scaleY*(e.gib?0.20:0.30); }
       if (e.deadT > 7) alpha = clamp(1-(e.deadT-7), 0, 1);
     }
-    if (e.alive && (e.tele > 0 || e.aiming > 0)) {      /* aviso de ataque */
+    const extras = calidad().extras;                    /* capas decorativas del enemigo */
+    if (e.alive && (e.tele > 0 || e.aiming > 0)) {      /* aviso de ataque (nunca se quita: avisa) */
       const k = e.tele > 0 ? (1 - e.tele/0.55) : (1 - e.aiming/0.55);
       list.push({ x:e.x, y:e.y, tex:FX.tele(), sx:e.scaleX*(1.4+k*1.9), sy:e.scaleX*(1.4+k*1.9),
                   anchor:'floor', lift:0.02, flash:0, alpha:0.35+0.45*k, raw:true });
@@ -6819,16 +6825,16 @@ function collectSprites() {
                   alpha:0.55 + 0.35*Math.sin(G.time*40), raw:true });
     }
     if (e.alive && e.elite) {                           /* aura y galon del elite */
-      list.push({ x:e.x, y:e.y, tex:FX.aura(), sx:sx*2.1, sy:sx*2.1, anchor:'floor', lift:0.02,
+      if (extras > 0) list.push({ x:e.x, y:e.y, tex:FX.aura(), sx:sx*2.1, sy:sx*2.1, anchor:'floor', lift:0.02,
                   flash:0, alpha:0.55 + 0.2*Math.sin(G.time*4), raw:true });
       list.push({ x:e.x, y:e.y, tex:FX.galon(), sx:sx*0.42, sy:sx*0.42, anchor:'floor',
                   lift: e.scaleY*1.02 + 0.05*Math.sin(G.time*2.6), flash:0, raw:true });
     }
-    if (e.alive && e.fuego > 0) {                       /* ardiendo */
+    if (e.alive && e.fuego > 0 && extras > 0) {         /* ardiendo */
       list.push({ x:e.x, y:e.y, tex:FX.aura(), sx:sx*1.5, sy:sx*1.5, anchor:'floor', lift:0.02,
                   flash:0, alpha:0.40 + 0.25*Math.sin(G.time*11), raw:true });
     }
-    if (e.alive && e.arenga > 0) {                      /* al que ha animado el delegado */
+    if (e.alive && e.arenga > 0 && extras > 0) {        /* al que ha animado el delegado */
       list.push({ x:e.x, y:e.y, tex:FX.tele(), sx:sx*1.8, sy:sx*1.8, anchor:'floor', lift:0.03,
                   flash:0, alpha:0.30 + 0.18*Math.sin(G.time*9), raw:true });
     }
