@@ -353,7 +353,8 @@
   <div class="panel col">
     <div class="lbar" id="code-row"><span class="muted">CÓDIGO DE SALA</span>
       <div class="codepill" id="code">------</div>
-      <button id="btn-copy">COPIAR</button></div>
+      <button id="btn-copy">COPIAR</button>
+      <button id="btn-share" title="Copia un enlace que entra directo a esta sala">ENLACE</button></div>
     <div class="stage" id="slot-list"></div>
     <div class="empties" id="empty-list"></div>
     <div class="plist" id="lobby-list"></div>
@@ -4202,11 +4203,19 @@ function updateRemoteEnemies(dt) {
     const e = G.enemies[i];
     e.flash = Math.max(0, e.flash - dt);
     e.anim = Math.max(0, e.anim - dt);
-    if (e.tx !== undefined) {
-      const k = clamp(dt*14, 0, 1);
-      const moved = Math.hypot(e.tx-e.x, e.ty-e.y);
-      e.x = lerp(e.x, e.tx, k); e.y = lerp(e.y, e.ty, k);
-      if (e.alive && moved > 0.015) e.walk += dt * 7;    /* ciclo de paso local */
+    if (e.sx !== undefined) {
+      /* Entre instantanea e instantanea se sigue el rumbo que llevaba, con
+         tope para que no se vaya de paseo si el paquete tarda. Asi camina
+         en vez de dar saltitos. */
+      e.edad = (e.edad || 0) + dt;
+      const av = e.alive ? Math.min(e.edad, 0.32) : 0;
+      let tgx = e.sx + e.vx*av, tgy = e.sy + e.vy*av;
+      if (hitsWall(tgx, tgy, e.radius*0.8)) { tgx = e.sx; tgy = e.sy; }
+      const moved = Math.hypot(tgx-e.x, tgy-e.y);
+      if (moved > 3.5) { e.x = tgx; e.y = tgy; }         /* salto grande: de golpe */
+      else { const k = clamp(dt*16, 0, 1); e.x = lerp(e.x, tgx, k); e.y = lerp(e.y, tgy, k); }
+      e.tx = tgx; e.ty = tgy;
+      if (e.alive && (moved > 0.012 || Math.hypot(e.vx,e.vy) > 0.2)) e.walk += dt * 7;
     }
     if (!e.alive) {
       e.deadT += dt;
@@ -5431,6 +5440,14 @@ function updateProjectiles(dt) {
     if (p.life <= 0) { G.projectiles.splice(i,1); continue; }
     if (LIGHTS.length < 22 && p.spr && p.spr !== 'nade' && p.spr !== 'chalk')
       addLight(p.x, p.y, 3.2, 0.42, 0.05);   /* los proyectiles arrastran su luz */
+    if (p.remote) {                                     /* del host: se predice y ya */
+      p.edad = (p.edad||0) + dt;
+      const av = Math.min(p.edad, 0.30);
+      const tx = p.sx + p.vx*av, ty = p.sy + p.vy*av;
+      const k = clamp(dt*20, 0, 1);
+      p.x = lerp(p.x, tx, k); p.y = lerp(p.y, ty, k);
+      continue;
+    }
     if (p.grav) {
       p.vz -= 9.5*dt; p.z += p.vz*dt;
       if (p.z < 0.10) { p.z = 0.10; p.vz = -p.vz*0.42; p.vx *= 0.66; p.vy *= 0.66; }
@@ -6247,9 +6264,28 @@ const NET = {
     if (c && c.open) { try { c.send(JSON.stringify(msg)); return; } catch(e){} }
     this.send(msg);
   },
+  /* ---- salud del enlace: ping, silencio y reconexion ---- */
+  ping: 0, ultimo: 0, pingT: 0, cortado: false,
+  reint: 0, reintT: 0, codeUlt: '', nickUlt: '',
+  latido(dt) {
+    if (!this.online) { this.cortado = false; return; }
+    const t = performance.now();
+    this.pingT -= dt;
+    if (this.pingT <= 0) {                              /* mide ida y vuelta */
+      this.pingT = 1.1;
+      if (this.isHost) { for (const [id, c] of this.conns) if (c.open)
+        { try { c.send(JSON.stringify({ t:'pg', tm:t })); } catch(e){} } }
+      else this.sendTo('HOST', { t:'pg', tm:t });
+    }
+    /* si no llega nada en dos segundos, algo pasa */
+    const mudo = this.ultimo ? (t - this.ultimo) : 0;
+    this.cortado = (this.ultimo > 0 && mudo > 2200);
+  },
+  marcarVivo() { this.ultimo = performance.now(); this.cortado = false; },
   reset() {                                             /* deja el peer limpio para reintentar */
     try { if (this.peer) this.peer.destroy(); } catch(e) {}
     this.peer = null; this.conns.clear(); this.online = false; this.isHost = false; this.code = '';
+    this.ping = 0; this.ultimo = 0; this.cortado = false; this.reint = 0;
   },
   host(nick, onReady, onErr, codeFijo) {
     if (!this.available) { onErr('PeerJS no disponible (sin conexión). Puedes jugar en solitario.'); return; }
@@ -6287,6 +6323,16 @@ const NET = {
         this.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff });
         renderLobby();
         addMsg(pl.nick + ' SE HA UNIDO', '#8ce89b');
+        /* si la partida ya va, entra directo a la sala en curso en vez de
+           quedarse mirando la sala de espera */
+        if (G.state === 'run' || G.state === 'pause' || G.state === 'upgrade' || G.state === 'cine') {
+          pl.hp = pl.maxhp; pl.down = false; pl.alive = true;
+          conn.send(JSON.stringify({ t:'start', room:G.room, seed:G.semilla, diff:G.diff,
+                                     ff:G.ff, up:G.upgOn, n:G.players.size, hd:G.horda,
+                                     tarde:1, ola:G.ola|0 }));
+          conn.send(JSON.stringify(worldSnapshot()));
+          addMsg(pl.nick + ' SE INCORPORA A LA PARTIDA', '#9fd0ff');
+        }
       });
       conn.on('data', (raw) => { try { onNet(conn.peer, JSON.parse(raw)); } catch(e){} });
       conn.on('close', () => {
@@ -6304,6 +6350,7 @@ const NET = {
   },
   join(code, nick, onReady, onErr) {
     if (!this.available) { onErr('PeerJS no disponible (sin conexión). Puedes jugar en solitario.'); return; }
+    this.codeUlt = String(code || '').toUpperCase(); this.nickUlt = nick;
     this.peer = new Peer({ debug:0 });
     this.isHost = false;
     this.peer.on('open', () => {
@@ -6316,16 +6363,23 @@ const NET = {
       const timer = setTimeout(() => { if (!this.online) onErr('No se pudo conectar con la sala ' + code); }, 9000);
       conn.on('open', () => {
         clearTimeout(timer);
-        this.online = true;
+        this.online = true; this.reint = 0; this.marcarVivo();
         this.conns.set('HOST', conn);
         G.isHost = false; G.hostId = 'HOST';
         onReady();
       });
       conn.on('data', (raw) => { try { onNet('HOST', JSON.parse(raw)); } catch(e){} });
-      conn.on('close', () => { addMsg('CONEXIÓN PERDIDA CON EL HOST', '#ff5c5c'); backToMenu(); });
-      conn.on('error', () => onErr('Error conectando con la sala.'));
+      conn.on('close', () => { this.online = false; this.conns.clear(); reconectar(); });
+      conn.on('error', () => { if (this.online) { this.online = false; reconectar(); }
+                              else onErr('Error conectando con la sala.'); });
     });
     this.peer.on('error', (e) => onErr('Error de red: ' + (e.type||e.message||e)));
+  },
+  /* corta del todo y vuelve al menu, sin intentar volver */
+  rendirse(msg) {
+    this.reint = 99; this.close();
+    if (msg) alert(msg);
+    backToMenu();
   },
   kick(id) {
     this.sendTo(id, { t:'kicked' });
@@ -6345,6 +6399,43 @@ const NET = {
     this.peer = null; this.online = false; this.isHost = false;
   }
 };
+/* Se cae el enlace con el anfitrion: en vez de echarte al menu de golpe, se
+   reintenta unas cuantas veces con esperas cada vez mas largas. La partida se
+   queda congelada con un aviso encima. */
+let reconTimer = null;
+function reconectar() {
+  if (!NET.codeUlt || NET.reint >= 5) {
+    avisoRed('');
+    addMsg('CONEXIÓN PERDIDA CON EL HOST', '#ff5c5c');
+    NET.close(); backToMenu();
+    return;
+  }
+  NET.reint++;
+  const espera = Math.min(8000, 900 * Math.pow(1.7, NET.reint - 1));
+  avisoRed('RECONECTANDO… (' + NET.reint + '/5)');
+  clearTimeout(reconTimer);
+  reconTimer = setTimeout(() => {
+    try { if (NET.peer) NET.peer.destroy(); } catch(e) {}
+    NET.peer = null;
+    NET.join(NET.codeUlt, NET.nickUlt || miNick(),
+      () => { avisoRed(''); addMsg('DE VUELTA EN LA SALA', '#8ce89b'); },
+      () => reconectar());
+  }, espera);
+}
+function avisoRed(txt) {
+  let el = document.getElementById('net-aviso');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'net-aviso';
+    el.style.cssText = 'position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:60;' +
+      'background:rgba(12,10,8,0.92);border:2px solid #c0392b;border-radius:10px;' +
+      'padding:14px 26px;color:#ffd45e;font:bold 20px ' + HUDF + ';letter-spacing:1px;' +
+      'text-align:center;pointer-events:none;display:none';
+    document.body.appendChild(el);
+  }
+  el.textContent = txt || '';
+  el.style.display = txt ? 'block' : 'none';
+}
 function serializePlayers() {
   const out = [];
   for (const p of G.players.values()) out.push({ id:p.id, nick:p.nick, skin:p.skin, fit:p.fit|0,
@@ -6354,6 +6445,12 @@ function serializePlayers() {
   return out;
 }
 /* -------------------- instantanea del mundo (host) -------------------- */
+/* Firma barata de una lista: si no cambia, no hace falta reenviarla. */
+function firmaLista(arr, campo) {
+  let h = arr.length;
+  for (const o of arr) h = (h*31 + (o[campo]|0)) | 0;
+  return h;
+}
 function worldSnapshot() {
   const en = [];
   for (const e of G.enemies) {
@@ -6363,18 +6460,32 @@ function worldSnapshot() {
   }
   const pr = [];
   for (const p of G.projectiles) pr.push([p.id, SPR_LIST.indexOf(p.spr), Math.round(p.x*50), Math.round(p.y*50), Math.round((p.z||0.5)*50)]);
-  const it = [];
-  for (const i of G.items) if (!i.taken)
-    it.push([i.id, ITEM_LIST.indexOf(i.kind), Math.round(i.x*50), Math.round(i.y*50), i.raro?1:0]);
   const po = [];
   for (const q of G.pools) po.push([Math.round(q.x*50), Math.round(q.y*50), Math.round(q.r*50)]);
-  const pp = [];
-  for (const pr of G.props) if (!pr.dead)
-    pp.push([pr.id, PROP_LIST.indexOf(pr.kind), Math.round(pr.x*50), Math.round(pr.y*50)]);
-  return { t:'world', e:en, p:pr, i:it, q:po, ps:G.portalOn?1:0, rs:G.roomState==='cleared'?1:0,
-           pr:pp, et:Math.round((G.exitT||0)*100), ic:G.inCircle||0, nc:G.needCircle||0 };
+  const msg = { t:'world', e:en, p:pr, q:po, ps:G.portalOn?1:0, rs:G.roomState==='cleared'?1:0,
+                et:Math.round((G.exitT||0)*100), ic:G.inCircle||0, nc:G.needCircle||0,
+                tm:(performance.now()|0) };
+  /* Objetos y trastos casi nunca se mueven y ya viajan por evento ('item',
+     'prop'). Se mandan enteros solo cuando cambian o de vez en cuando, para
+     dejar el ancho de banda a los enemigos, que son lo que se nota. */
+  const vivos = G.items.filter(i => !i.taken), enteros = G.props.filter(p => !p.dead);
+  const fi = firmaLista(vivos, 'id'), fp = firmaLista(enteros, 'id');
+  if (fi !== G.netFirmaIt || (G.seq % 24) === 0) {
+    G.netFirmaIt = fi;
+    msg.i = vivos.map(i => [i.id, ITEM_LIST.indexOf(i.kind), Math.round(i.x*50), Math.round(i.y*50), i.raro?1:0]);
+  }
+  if (fp !== G.netFirmaPr || (G.seq % 24) === 0) {
+    G.netFirmaPr = fp;
+    msg.pr = enteros.map(p => [p.id, PROP_LIST.indexOf(p.kind), Math.round(p.x*50), Math.round(p.y*50)]);
+  }
+  return msg;
 }
 function applySnapshot(m) {
+  /* cuanto ha tardado en llegar esta instantanea: con eso se saca la
+     velocidad de cada enemigo y se puede predecir entre paquete y paquete */
+  const ahora = performance.now();
+  const paso = G.netUlt ? clamp((ahora - G.netUlt)/1000, 0.03, 0.5) : 0.10;
+  G.netUlt = ahora;
   const seen = new Set();
   for (const a of m.e) {
     const [id, di, x, y, hpP, flags, wk] = a;
@@ -6384,8 +6495,16 @@ function applySnapshot(m) {
       if (!def) continue;
       e = new Enemy(def, x/50, y/50, null); e.id = id; G.enemies.push(e);
     }
-    e.tx = x/50; e.ty = y/50;
-    if (!e.netInit) { e.x = e.tx; e.y = e.ty; e.netInit = true; }
+    const nx = x/50, ny = y/50;
+    if (e.netInit) {
+      const dvx = (nx - e.sx)/paso, dvy = (ny - e.sy)/paso;
+      /* si pega un salto raro es teletransporte del host, no velocidad */
+      const v = Math.hypot(dvx, dvy);
+      if (v > 14) { e.vx = 0; e.vy = 0; e.x = nx; e.y = ny; }
+      else { e.vx = dvx; e.vy = dvy; }
+    } else { e.vx = 0; e.vy = 0; e.x = nx; e.y = ny; e.netInit = true; }
+    e.sx = nx; e.sy = ny; e.edad = 0;
+    e.tx = nx; e.ty = ny;
     e.hp = e.maxhp * hpP/100;
     const wasAlive = e.alive;
     e.alive = !!(flags & 1);
@@ -6403,13 +6522,24 @@ function applySnapshot(m) {
   }
   /* fuera todo lo que el anfitrion ya no envia, vivo o muerto */
   for (let i=G.enemies.length-1;i>=0;i--) if (!seen.has(G.enemies[i].id)) G.enemies.splice(i,1);
+  /* los proyectiles del host tambien se predicen, que si no van a saltos */
+  const viejos = new Map();
+  for (const o of G.projectiles) if (o.remote) viejos.set(o.id, o);
   G.projectiles.length = 0;
-  for (const a of m.p) G.projectiles.push({ id:a[0], spr:SPR_LIST[a[1]]||'bullet', x:a[2]/50, y:a[3]/50, z:a[4]/50,
-    vx:0, vy:0, dmg:0, r:0.16, from:'enemy', life:9, scale:0.30, remote:true });
-  const kinds = ITEM_LIST;
-  G.items.length = 0;
-  for (const a of m.i) G.items.push({ id:a[0], kind:kinds[a[1]]||'bullets', x:a[2]/50, y:a[3]/50,
-                                      t:0, taken:false, raro:!!a[4] });
+  for (const a of m.p) {
+    const nx = a[2]/50, ny = a[3]/50, o = viejos.get(a[0]);
+    const pv = { id:a[0], spr:SPR_LIST[a[1]]||'bullet', x: o ? o.x : nx, y: o ? o.y : ny, z:a[4]/50,
+                 sx:nx, sy:ny, edad:0, dmg:0, r:0.16, from:'enemy', life:9, scale:0.30, remote:true };
+    pv.vx = o ? clamp((nx - o.sx)/paso, -22, 22) : 0;
+    pv.vy = o ? clamp((ny - o.sy)/paso, -22, 22) : 0;
+    G.projectiles.push(pv);
+  }
+  if (m.i) {                                            /* solo viene cuando cambia */
+    const kinds = ITEM_LIST;
+    G.items.length = 0;
+    for (const a of m.i) G.items.push({ id:a[0], kind:kinds[a[1]]||'bullets', x:a[2]/50, y:a[3]/50,
+                                        t:0, taken:false, raro:!!a[4] });
+  }
   G.pools.length = 0;
   for (const a of m.q) G.pools.push({ x:a[0]/50, y:a[1]/50, r:a[2]/50, dmg:0, life:9 });
   if (m.pr) {
@@ -6434,6 +6564,7 @@ function applySnapshot(m) {
 }
 /* --------------------------- entrada de red --------------------------- */
 function onNet(from, m) {
+  NET.marcarVivo();
   switch (m.t) {
     case 'welcome': {
       G.meId = m.you; G.hostId = m.host; G.diff = m.diff; G.ff = m.ff;
@@ -6505,18 +6636,50 @@ function onNet(from, m) {
       break;
     }
     case 'lleno': addMsg('LA PARTIDA VA LLENA: NO CABEN MÁS MANDOS', '#ff8a7a'); break;
-    case 'full': alert('La sala está llena.'); backToMenu(); break;
-    case 'kicked': alert('El anfitrión te ha expulsado.'); backToMenu(); break;
+    case 'full': NET.rendirse('La sala está llena.'); break;
+    case 'kicked': NET.rendirse('El anfitrión te ha expulsado.'); break;
     case 'start': G.diff = m.diff; G.ff = m.ff; G.upgOn = (m.up === undefined ? 1 : m.up);
-      G.nPlayers = m.n; beginRun(m.room, m.seed, m.hd); break;
+      G.nPlayers = m.n; beginRun(m.room, m.seed, m.hd);
+      if (m.tarde) {                                    /* te has metido a mitad */
+        if (m.ola) { G.ola = m.ola|0; G.olaFase = 'pelea'; }
+        addMsg('TE INCORPORAS A LA PARTIDA EN CURSO', '#9fd0ff');
+      }
+      break;
     case 'room': startRoom(m.n, m.seed); break;
     case 'world': if (!G.isHost) applySnapshot(m); break;
+    case 'pings': {
+      for (const a of m.l) { const q = G.players.get(a[0]); if (q) q.ping = a[1]; }
+      break;
+    }
+    case 'pg': {                                        /* devuelve el eco al momento */
+      const c = NET.conns.get(from);
+      if (c && c.open) { try { c.send(JSON.stringify({ t:'po', tm:m.tm })); } catch(e){} }
+      break;
+    }
+    case 'po': {
+      const rtt = Math.max(0, Math.round(performance.now() - (m.tm||0)));
+      if (G.isHost) { const p = G.players.get(from); if (p) p.ping = rtt;
+                      for (const [k,q] of G.players) if (baseDeId(k) === from) q.ping = rtt; }
+      else NET.ping = rtt;
+      break;
+    }
     case 'pstate': {
       const p = G.players.get(m.id);
-      if (p && !p.isLocal) { p.tx=m.x; p.ty=m.y; p.tang=m.a; p.weapon=m.w; p.walk=m.k;
-                             p.down=!!m.d; p.hp=m.h; p.anim=m.n?0.25:0;
-                             if (m.mh) p.maxhp = m.mh;
-                             if (m.ar !== undefined) p.armor = m.ar; }
+      if (p && !p.isLocal) {
+        const t = performance.now();
+        const paso = p.netUlt ? clamp((t - p.netUlt)/1000, 0.03, 0.5) : 0.10;
+        p.netUlt = t;
+        if (p.netInit) {
+          const dvx = (m.x - p.sx)/paso, dvy = (m.y - p.sy)/paso;
+          if (Math.hypot(dvx, dvy) > 14) { p.vx = 0; p.vy = 0; p.x = m.x; p.y = m.y; }
+          else { p.vx = dvx; p.vy = dvy; }
+        } else { p.vx = 0; p.vy = 0; p.x = m.x; p.y = m.y; p.ang = m.a; p.netInit = true; }
+        p.sx = m.x; p.sy = m.y; p.edad = 0;
+        p.tx = m.x; p.ty = m.y; p.tang = m.a;
+        p.weapon = m.w; p.walk = m.k; p.down = !!m.d; p.hp = m.h; p.anim = m.n?0.25:0;
+        if (m.mh) p.maxhp = m.mh;
+        if (m.ar !== undefined) p.armor = m.ar;
+      }
       if (G.isHost) relay(from, m);
       break;
     }
@@ -7983,6 +8146,13 @@ function renderHUD() {
   const barH = view.hud, top = H - barH;
   if (!hudTex || hudTex.w !== W) buildHudTex(W, barH);
   ctx.drawImage(hudTex.c, 0, top);
+  if (NET.online && NET.cortado) {                      /* el enlace se ha quedado mudo */
+    const aw = Math.min(320*s, W*0.7), ah = 34*s, ax = (W-aw)/2, ay = view.v3*0.12;
+    ctx.fillStyle = 'rgba(12,10,8,0.86)'; ctx.fillRect(ax, ay, aw, ah);
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = Math.max(2, 2.4*s);
+    ctx.strokeRect(ax, ay, aw, ah);
+    bigText('⚠ CONEXIÓN INESTABLE', W/2, ay + ah*0.66, (17*s)|0, '#ffb36b');
+  }
   const pad = 12*s;
   const panel = (x,y,w,h) => { roundRect(ctx,x,y,w,h,6*s,'rgba(0,0,0,0.45)');
     ctx.strokeStyle='rgba(255,225,170,0.16)'; ctx.lineWidth=Math.max(1,1.5*s);
@@ -8319,7 +8489,13 @@ function renderLobby() {
     nk.textContent = (p.id === G.hostId && online ? '👑 ' : '') + p.nick;
     const sl = document.createElement('div');
     sl.className = 'pslot';
-    sl.textContent = 'P' + (jug.indexOf(p)+1) + (p.id === yo ? ' · TÚ' : '');
+    let etiq = 'P' + (jug.indexOf(p)+1) + (p.id === yo ? ' · TÚ' : '');
+    if (online && p.id !== yo && !p.isLocal) {           /* latencia con ese equipo */
+      const pg = p.ping|0;
+      if (pg) { etiq += ' · ' + pg + 'ms';
+                sl.style.color = pg < 90 ? '#8ce89b' : pg < 180 ? '#ffd45e' : '#ff6b6b'; }
+    }
+    sl.textContent = etiq;
     pod.appendChild(glow); pod.appendChild(cv); pod.appendChild(nk); pod.appendChild(sl);
     if (online && G.isHost && !p.isLocal && p.id === baseDeId(p.id)) {
       const b = document.createElement('button');      /* solo se expulsa a una PC entera */
@@ -9074,6 +9250,9 @@ function resumeGame() {
   lockPointer();
 }
 function backToMenu() {
+  clearTimeout(reconTimer); reconTimer = null;
+  NET.codeUlt = ''; NET.cortado = false;
+  if (typeof avisoRed === 'function') avisoRed('');
   NET.close();
   LOC = [];
   G.state = 'menu'; G.players.clear(); G.enemies.length = 0;
@@ -9636,6 +9815,12 @@ $('btn-lobby-char').onclick = () => openChar('scr-lobby');
 $('btn-lobby-back').onclick = () => backToMenu();
 $('btn-end-back').onclick = () => backToMenu();
 $('btn-copy').onclick = () => { try { navigator.clipboard.writeText(NET.code); addMsg('CÓDIGO COPIADO','#8ce89b'); } catch(e){} };
+/* enlace directo: quien lo abra cae en la pantalla de unirse con el codigo puesto */
+$('btn-share').onclick = () => {
+  const url = location.origin + location.pathname + '#sala=' + (NET.code || '');
+  try { navigator.clipboard.writeText(url); addMsg('ENLACE COPIADO','#8ce89b'); }
+  catch(e) { prompt('Copia este enlace:', url); }
+};
 $('sel-diff').onchange = () => { G.diff = clamp(parseInt($('sel-diff').value,10)||0, 0, DIFFS.length-1);
   NET.send({ t:'lobby', players:serializePlayers(), diff:G.diff, ff:G.ff, up:G.upgOn }); renderLobby(); };
 $('sel-upg').onchange = () => { G.upgOn = parseInt($('sel-upg').value,10) ? 1 : 0;
@@ -9748,26 +9933,44 @@ function frame(now) {
       updateProjectiles(dt);                              /* solo la granada propia y efectos */
     }
     updateParts(dt);
-    /* interpolacion de los avatares remotos */
+    /* Avatares remotos: se sigue su rumbo entre paquete y paquete y se gira
+       por el lado corto. Antes solo se acercaban al ultimo punto conocido y
+       por eso iban a tirones y siempre un paso por detras. */
     for (const q of G.players.values()) {
-      if (q.isLocal || !q.tx) continue;
-      q.x = lerp(q.x, q.tx, clamp(dt*12,0,1));
-      q.y = lerp(q.y, q.ty, clamp(dt*12,0,1));
-      q.ang = q.tang;
+      if (q.isLocal || q.sx === undefined) continue;
+      q.edad = (q.edad||0) + dt;
+      const av = q.down ? 0 : Math.min(q.edad, 0.28);
+      let tgx = q.sx + q.vx*av, tgy = q.sy + q.vy*av;
+      if (hitsWall(tgx, tgy, 0.22)) { tgx = q.sx; tgy = q.sy; }
+      if (Math.hypot(tgx-q.x, tgy-q.y) > 3.5) { q.x = tgx; q.y = tgy; }
+      else { const k = clamp(dt*16,0,1); q.x = lerp(q.x, tgx, k); q.y = lerp(q.y, tgy, k); }
+      q.tx = tgx; q.ty = tgy;
+      let da = (q.tang||0) - q.ang;                      /* giro por el arco corto */
+      while (da > Math.PI) da -= TAU;
+      while (da < -Math.PI) da += TAU;
+      q.ang += da * clamp(dt*18, 0, 1);
       if (q.anim > 0) q.anim -= dt;
     }
     /* red: estado propio y (si host) instantanea del mundo */
     if (NET.online) {
       G.netT -= dt;
       if (G.netT <= 0) {
-        G.netT = 1/15;
+        G.netT = 1/22;                                   /* 22 avisos por segundo */
         for (const q of localesVivos())                  /* todos los de este sofa */
           NET.send({ t:'pstate', id:q.id, x:+q.x.toFixed(2), y:+q.y.toFixed(2), a:+q.ang.toFixed(3),
                      w:q.weapon, k:(q.walk|0)&3, d:q.down?1:0, h:Math.round(q.hp),
                      mh:Math.round(q.maxhp), ar:Math.round(q.armor||0), n:q.cool>0?1:0 });
-        const every = G.players.size > 4 ? 3 : 2;         /* menos ancho de banda con lobby lleno */
-        if (G.isHost && (G.seq++ % every === 0)) NET.send(worldSnapshot());
+        /* el mundo va algo mas lento que los jugadores, pero el doble que
+           antes; lo que falta lo pone la prediccion del cliente */
+        const cada = G.players.size > 5 ? 2 : 1;
+        if (G.isHost && (G.seq++ % cada === 0)) NET.send(worldSnapshot());
+        if (G.isHost && (G.seq % 22) === 0) {            /* tabla de pings, una vez por segundo */
+          const tabla = [];
+          for (const q of G.players.values()) if (!q.isLocal) tabla.push([q.id, q.ping|0]);
+          if (tabla.length) NET.send({ t:'pings', l:tabla });
+        }
       }
+      NET.latido(dt);
     }
   }
   /* ------------------------------ pintado ------------------------------ */
@@ -9890,6 +10093,15 @@ renderResumenMenu();
 $('net-state').textContent = NET.available
   ? 'Red: PeerJS lista · crea o únete a una sala'
   : 'Red: PeerJS no disponible (sin conexión) · el modo solitario funciona igual';
+/* enlace directo torremar.html#sala=ABC12: entra solo a la pantalla de unirse */
+(function salaDeEnlace() {
+  const m = /#sala=([0-9A-Za-z]{3,10})/.exec(location.hash || '');
+  if (!m || !NET.available) return;
+  const code = m[1].toUpperCase();
+  showScreen('scr-join');
+  $('join-code').value = code;
+  $('join-msg').textContent = 'Sala ' + code + ' · pulsa CONECTAR cuando tengas tu nombre puesto.';
+})();
 requestAnimationFrame(frame);
 </script>
 </body>
