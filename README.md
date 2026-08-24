@@ -37,6 +37,35 @@ los jefes.
   PCs. Tres en tu casa, dos en la de un amigo, dos en la de otro y uno solo son
   ocho en la misma partida.
 
+### Cómo se comporta la red
+
+- **Nada de tirones.** Con cada aviso del anfitrión se calcula la velocidad de
+  cada compañero, enemigo y proyectil, y entre paquete y paquete se sigue su
+  rumbo. Hay tope de 0,3 s para que nada se vaya de paseo si se pierde un
+  paquete, freno si el destino cae en una pared y salto directo si el anfitrión
+  teletransporta algo. Los avatares remotos giran por el arco corto.
+- **22 avisos por segundo** de estado de jugador y el doble de instantáneas del
+  mundo que antes. Los objetos y los trastos, que ya viajan por evento, solo se
+  mandan enteros cuando cambian.
+- **Ping real** medido de ida y vuelta: se ve por jugador en la sala de espera y
+  en el listado del HUD, con color según lo alto que sea. Si el enlace se queda
+  mudo más de dos segundos sale un aviso en pantalla.
+- **Reconexión automática:** si se cae el enlace con el anfitrión no te echa al
+  menú, reintenta cinco veces con esperas crecientes. Si te expulsan o la sala
+  está llena, no reintenta.
+- **Entrar a mitad de partida:** quien se conecta con la partida ya empezada
+  recibe la sala en curso y una instantánea del mundo, y aparece vivo donde
+  toca.
+- **Enlace directo:** el botón ENLACE de la sala copia una dirección con
+  `#sala=CÓDIGO` que abre el juego en la pantalla de unirse con el código ya
+  puesto.
+- **Marcas de sitio:** apuntas y pulsas `E` (cruceta → en mando) y todo el
+  equipo ve un rombo flotante donde miras, una flecha en el borde de la pantalla
+  y una línea en el registro. El tipo sale solo: enemigo, botín, salida o
+  genérica. Cada jugador tiene una marca a la vez y duran siete segundos.
+- **Errores en cristiano:** «no hay ninguna sala con ese código», «tu red está
+  bloqueando la conexión directa»… en vez de los códigos internos de PeerJS.
+
 ## Controles (por defecto)
 
 | Acción | Teclado | Mando |
@@ -54,6 +83,7 @@ los jefes.
 | Granada rápida | G | Cruceta ↑ |
 | Cantimplora | H | Y / △ |
 | Furia | Q | Cruceta ↓ |
+| Marcar sitio | E | Cruceta → |
 | Mapa | Tab | Back |
 | Pausa | Esc | Start |
 

@@ -761,7 +761,7 @@ const DEFAULT_KEYS = {
   sprint:'ShiftLeft', crouch:'KeyC', jump:'Space', dash:'KeyF',
   fire:'Mouse0', alt:'Mouse2', reload:'KeyR', heal:'KeyH', nade:'KeyG', ulti:'KeyQ',
   w1:'Digit1', w2:'Digit2', w3:'Digit3', w4:'Digit4', w5:'Digit5',
-  map:'Tab', mute:'KeyM'
+  map:'Tab', mute:'KeyM', marcar:'KeyE'
 };
 const KEY_LABELS = {
   forward:'Avanzar', back:'Retroceder', left:'Desplazarse a la izquierda', right:'Desplazarse a la derecha',
@@ -771,6 +771,7 @@ const KEY_LABELS = {
   ulti:'DUC IN ALTUM (furia)',
   w1:'1 · Machete', w2:'2 · Glock 19', w3:'3 · Remington 870', w4:'4 · M16', w5:'5 · Frag Grenade',
   wprev:'Arma anterior', wnext:'Arma siguiente',
+  marcar:'Marcar sitio (aviso para el equipo)',
   map:'Mapa', mute:'Silenciar'
 };
 /* en la lista de ARMAS el teclado lleva un numero por arma y el mando las rota */
@@ -779,7 +780,7 @@ const KEY_SECTIONS = [
   { title:'MOVIMIENTO', keys:['forward','back','left','right','sprint','crouch','jump','dash'] },
   { title:'COMBATE',    keys:['fire','alt','nade','reload','heal','ulti'] },
   { title:'ARMAS',      keys:['w1','w2','w3','w4','w5'] },
-  { title:'INTERFAZ',   keys:['map','mute'] }
+  { title:'INTERFAZ',   keys:['map','mute','marcar'] }
 ];
 /* ---------------------------------------------------------------------
    Mandos: Chrome mapea PlayStation y Xbox al esquema "standard", asi que
@@ -795,7 +796,7 @@ const DEFAULT_PAD = {
   fire:'B7', alt:'B6', nade:'B12', reload:'B2', heal:'B3', ulti:'B13',
   jump:'B0', dash:'B1', crouch:'B10', sprint:'B11',
   wprev:'B4', wnext:'B5',                               /* L1/LB y R1/RB rotan el arma */
-  map:'B8', mute:'B16'
+  map:'B8', mute:'B16', marcar:'B15'                    /* cruceta derecha: marcar sitio */
 };
 const MAX_LOCALES = 4;
 let KEYS = Object.assign({}, DEFAULT_KEYS);
@@ -1097,6 +1098,7 @@ const Snd = {
   hurt(){ this.tone(180,0.22,'sawtooth',0.10,70); },
   die(){ this.tone(300,0.5,'sawtooth',0.10,50); this.noise(0.4,0.12,700); },
   pick(){ this.tone(640,0.07,'triangle',0.06); setTimeout(()=>this.tone(940,0.09,'triangle',0.06),60); },
+  marca(){ this.tone(1180,0.06,'square',0.045); setTimeout(()=>this.tone(1560,0.09,'square',0.04),55); },
   dash(){ this.noise(0.18,0.10,900,0.8); },
   drink(){ this.tone(320,0.18,'sine',0.07,520); },
   roar(){ this.tone(140,0.95,'sawtooth',0.14,44); this.noise(0.7,0.14,480); },
@@ -3711,6 +3713,22 @@ const FX = {
     g.addColorStop(0,'rgba(255,180,60,0)'); g.addColorStop(0.62,'rgba(255,170,50,0.30)');
     g.addColorStop(0.86,'rgba(255,120,30,0.55)'); g.addColorStop(1,'rgba(255,90,20,0)');
     c.fillStyle=g; c.beginPath(); c.arc(W/2,H/2,W*0.5,0,TAU); c.fill(); }),
+  /* rombo del aviso de equipo, con el color y el simbolo del tipo */
+  marca: (col, ico) => sprite('fx_mk_'+col+ico, 72, 72, (c,W,H)=>{
+    c.save(); c.translate(W/2, H/2);
+    c.rotate(Math.PI/4);
+    const g = c.createLinearGradient(-W*0.28,-H*0.28,W*0.28,H*0.28);
+    g.addColorStop(0, col); g.addColorStop(0.55, shade(col,1.35)); g.addColorStop(1, shade(col,0.7));
+    roundRect(c, -W*0.26, -H*0.26, W*0.52, H*0.52, W*0.06, g);
+    c.strokeStyle='rgba(8,8,12,0.8)'; c.lineWidth=3;
+    roundRect(c, -W*0.26, -H*0.26, W*0.52, H*0.52, W*0.06); c.stroke();
+    c.restore();
+    c.fillStyle='rgba(8,8,12,0.9)';
+    c.font='bold ' + Math.round(W*0.30) + 'px ' + HUDF;
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(ico, W/2, H/2);
+    c.strokeStyle = col; c.lineWidth = 3;               /* pincho hacia el suelo */
+    c.beginPath(); c.moveTo(W/2, H*0.78); c.lineTo(W/2, H*0.99); c.stroke(); }),
   portal: () => sprite('fx_portal',128,160,(c,W,H)=>{
     const g=c.createLinearGradient(0,H,0,0);
     g.addColorStop(0,'rgba(120,220,255,0.05)'); g.addColorStop(0.5,'rgba(120,220,255,0.45)');
@@ -5423,6 +5441,71 @@ function explode(x, y, radius, dmg, fromId) {
   }
 }
 
+/* ---------------------------------------------------------------------
+   MARCAS DE SITIO
+   Apuntas y avisas: sale un rombo flotando donde miras, una flecha en el
+   borde de la pantalla y una linea en el registro. El tipo se saca de lo
+   que haya delante, asi que "enemigo aqui" y "botin aqui" salen solos.
+   --------------------------------------------------------------------- */
+const MARCA_DUR = 7.0;
+const MARCA_TIPO = [
+  { ico:'❖', txt:'MARCA AQUÍ',   col:'#9fd0ff' },
+  { ico:'✕', txt:'¡ENEMIGO!',    col:'#ff6b6b' },
+  { ico:'✦', txt:'BOTÍN AQUÍ',   col:'#ffd45e' },
+  { ico:'⇱', txt:'POR AQUÍ',     col:'#8ce89b' }
+];
+function ponerMarca(x, y, tipo, quien, nick) {
+  if (!G.marcas) G.marcas = [];
+  /* una marca por jugador: la nueva sustituye a la suya anterior */
+  for (let i=G.marcas.length-1;i>=0;i--) if (G.marcas[i].by === quien) G.marcas.splice(i,1);
+  if (G.marcas.length > 7) G.marcas.shift();
+  G.marcas.push({ x, y, k:tipo|0, by:quien, nick:nick||'', t:MARCA_DUR });
+  const d = MARCA_TIPO[tipo|0] || MARCA_TIPO[0];
+  killFeed((nick ? nick + ': ' : '') + d.ico + ' ' + d.txt, d.col);
+  Snd.marca();
+}
+function marcarSitio(p) {
+  if (!p || p.down || (p.marcaCd||0) > 0) return;
+  p.marcaCd = 0.55;
+  const dx = Math.cos(p.ang), dy = Math.sin(p.ang);
+  const k = pendienteMira(p), z0 = alturaOjos(p);
+  let mejor = Math.min(rayWall(p.x, p.y, dx, dy, 34), 34), tipo = 0;
+  for (const e of G.enemies) {                          /* ¿estoy señalando a alguien? */
+    if (!e.alive) continue;
+    const ex = e.x-p.x, ey = e.y-p.y, t = ex*dx+ey*dy;
+    if (t <= 0.3 || t > mejor) continue;
+    const px = ex-dx*t, py = ey-dy*t, rr = e.radius*2.2;
+    if (px*px+py*py > rr*rr) continue;
+    const z = z0 + k*t;
+    if (z < -0.2 || z > e.scaleY*1.4) continue;
+    mejor = t; tipo = 1;
+  }
+  for (const it of G.items) {                           /* o a un botin */
+    if (it.taken) continue;
+    const ex = it.x-p.x, ey = it.y-p.y, t = ex*dx+ey*dy;
+    if (t <= 0.3 || t > mejor) continue;
+    const px = ex-dx*t, py = ey-dy*t;
+    if (px*px+py*py > 0.44) continue;
+    mejor = t; tipo = 2;
+  }
+  if (!tipo && G.portalOn && MAP.exit) {                /* la salida abierta manda */
+    const ex = MAP.exit.x-p.x, ey = MAP.exit.y-p.y, t = ex*dx+ey*dy;
+    if (t > 0.3 && t < mejor + 2) {
+      const px = ex-dx*t, py = ey-dy*t;
+      if (px*px+py*py < 2.2) { mejor = t; tipo = 3; }
+    }
+  }
+  const mx = p.x + dx*Math.max(0.6, mejor - 0.25), my = p.y + dy*Math.max(0.6, mejor - 0.25);
+  ponerMarca(mx, my, tipo, p.id, p.nick);
+  NET.send({ t:'marca', x:+mx.toFixed(2), y:+my.toFixed(2), k:tipo, id:p.id, n:p.nick });
+}
+function tickMarcas(dt) {
+  if (!G.marcas) return;
+  for (let i=G.marcas.length-1;i>=0;i--) {
+    G.marcas[i].t -= dt;
+    if (G.marcas[i].t <= 0) G.marcas.splice(i,1);
+  }
+}
 /* --------------------------- proyectiles ----------------------------- */
 function updateProjectiles(dt) {
   for (let i=G.projectiles.length-1;i>=0;i--) {
@@ -5518,6 +5601,7 @@ function updateLocal(p, dt) {
   if (p.pad !== undefined && p.pad !== null) {          /* atajos que en teclado van por keydown */
     if (flanco(p, 'wnext')) rotarArma(p, 1);            /* R1 / RB */
     if (flanco(p, 'wprev')) rotarArma(p, -1);           /* L1 / LB */
+    if (flanco(p, 'marcar')) marcarSitio(p);            /* cruceta derecha */
     if (flanco(p, 'mute')) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
     if (padPulsado(p.pad, 'B9') && !p.startHeld) openPause();   /* START */
     p.startHeld = padPulsado(p.pad, 'B9');
@@ -5544,6 +5628,7 @@ function updateLocal(p, dt) {
   p.killMark = Math.max(0, p.killMark-dt);
   p.slideCd = Math.max(0, (p.slideCd||0)-dt);
   p.nadeCd = Math.max(0, (p.nadeCd||0)-dt);
+  p.marcaCd = Math.max(0, (p.marcaCd||0)-dt);
   tickFuria(p, dt);
   tickParry(p, dt);
   if (p.buffs) for (const k in p.buffs) {              /* cafe y chicle se van solos */
@@ -5931,6 +6016,7 @@ function startRoom(n, seed) {
   G.mod = rollModifier(n, seed);
   genRoom(n, seed);
   G.projectiles.length = 0; G.items.length = 0; G.pools.length = 0;
+  if (G.marcas) G.marcas.length = 0;
   G.parts.length = 0; G.fx.length = 0; G.motes.length = 0; G.props.length = 0;
   G.dmgNums.length = 0; G.feed.length = 0; G.combo = 0; G.decals.length = 0; G.holes.length = 0;
   if (G.trazas) G.trazas.length = 0;
@@ -6264,6 +6350,17 @@ const NET = {
     if (c && c.open) { try { c.send(JSON.stringify(msg)); return; } catch(e){} }
     this.send(msg);
   },
+  /* PeerJS suelta codigos tipo 'peer-unavailable'; aqui se traducen a algo
+     que se entienda sin saber de redes. */
+  motivo(e) {
+    const t = (e && (e.type || e.message)) ? String(e.type || e.message) : String(e || '');
+    if (/peer-unavailable/.test(t))  return 'No hay ninguna sala con ese código. Compruébalo o pide al anfitrión que la cree otra vez.';
+    if (/unavailable-id/.test(t))    return 'Ese código ya está en uso. Vuelve a crear la sala.';
+    if (/browser-incompatible/.test(t)) return 'Este navegador no soporta la conexión directa. Prueba con Chrome o Edge.';
+    if (/ssl|invalid-key|server-error|socket|network/.test(t)) return 'No se llega al servidor de salas. Revisa tu conexión y vuelve a intentarlo.';
+    if (/webrtc|negotiation|disconnected/.test(t)) return 'Tu red está bloqueando la conexión directa. Prueba con otra wifi o con datos del móvil.';
+    return 'Fallo de red: ' + t;
+  },
   /* ---- salud del enlace: ping, silencio y reconexion ---- */
   ping: 0, ultimo: 0, pingT: 0, cortado: false,
   reint: 0, reintT: 0, codeUlt: '', nickUlt: '',
@@ -6302,7 +6399,7 @@ const NET = {
       sincronizarLocales();                             /* HOST, HOST~2, HOST~3... */
       onReady(code);
     });
-    this.peer.on('error', (e) => onErr('Error de red: ' + (e.type||e.message||e)));
+    this.peer.on('error', (e) => { if (this.online) return; onErr(this.motivo(e)); });
     this.peer.on('connection', (conn) => {
       if (G.players.size >= MAX_PLAYERS) { conn.on('open',()=>{ conn.send(JSON.stringify({t:'full'})); setTimeout(()=>conn.close(),300); }); return; }
       conn.on('open', () => {
@@ -6360,7 +6457,8 @@ const NET = {
                      fa: PREFS.face|0, ht: PREFS.hat|0, ey: PREFS.eyewear|0,
                      ve: PREFS.facial|0, ac: PREFS.hatCol || PREFS.accCol || null,
                      ac2: PREFS.eyeCol || PREFS.accCol || null }, reliable:true });
-      const timer = setTimeout(() => { if (!this.online) onErr('No se pudo conectar con la sala ' + code); }, 9000);
+      const timer = setTimeout(() => { if (!this.online)
+        onErr('La sala ' + code + ' no responde. Puede que el anfitrión la haya cerrado.'); }, 9000);
       conn.on('open', () => {
         clearTimeout(timer);
         this.online = true; this.reint = 0; this.marcarVivo();
@@ -6370,10 +6468,10 @@ const NET = {
       });
       conn.on('data', (raw) => { try { onNet('HOST', JSON.parse(raw)); } catch(e){} });
       conn.on('close', () => { this.online = false; this.conns.clear(); reconectar(); });
-      conn.on('error', () => { if (this.online) { this.online = false; reconectar(); }
-                              else onErr('Error conectando con la sala.'); });
+      conn.on('error', (e) => { if (this.online) { this.online = false; reconectar(); }
+                               else onErr(this.motivo(e)); });
     });
-    this.peer.on('error', (e) => onErr('Error de red: ' + (e.type||e.message||e)));
+    this.peer.on('error', (e) => { if (this.online) return; onErr(this.motivo(e)); });
   },
   /* corta del todo y vuelve al menu, sin intentar volver */
   rendirse(msg) {
@@ -6647,6 +6745,11 @@ function onNet(from, m) {
       break;
     case 'room': startRoom(m.n, m.seed); break;
     case 'world': if (!G.isHost) applySnapshot(m); break;
+    case 'marca': {
+      ponerMarca(m.x, m.y, m.k, m.id, m.n);
+      if (G.isHost) relay(from, m);
+      break;
+    }
     case 'pings': {
       for (const a of m.l) { const q = G.players.get(a[0]); if (q) q.ping = a[1]; }
       break;
@@ -7012,6 +7115,14 @@ function collectSprites() {
     const tex = playerSprite(pl.skin, pl.fit|0, wk, st, (pl.walk|0)&3, pl.down, pl.hair, pl.hairCol, pl);
     list.push({ x:pl.x, y:pl.y, tex, sx:(pl.down?0.66:0.44)*PSX, sy:(pl.down?0.24:0.72)*PSY,
                 anchor:'floor', lift:0, flash:0, tag:pl.nick, player:pl });
+  }
+  if (G.marcas) for (const mk of G.marcas) {           /* rombo del aviso, flotando */
+    const d = MARCA_TIPO[mk.k] || MARCA_TIPO[0];
+    const sube = 0.55 + 0.09*Math.sin(G.time*3.4 + mk.x);
+    const fin = clamp(mk.t/0.8, 0, 1);                  /* se apaga al final */
+    list.push({ x:mk.x, y:mk.y, tex:FX.marca(d.col, d.ico), sx:0.42, sy:0.42,
+                anchor:'floor', lift:sube, flash:0, alpha:0.55 + 0.35*fin, raw:true,
+                tag: mk.nick ? mk.nick : null });
   }
   for (const q of G.pools) list.push({ x:q.x, y:q.y, tex:FX.pool(), sx:q.r*2, sy:q.r*0.55, anchor:'floor', lift:0.02, flash:0, alpha:0.9, raw:true });
   const ojoN = cam();
@@ -7901,6 +8012,10 @@ function brujula(p) {
   const jefe = G.bossRef && G.bossRef.alive ? G.bossRef : null;
   if (jefe) marcas.push({ x:jefe.x, y:jefe.y, col:'#ff8a5c', txt:'☠', prio:1 });
   if (G.portalOn && MAP.exit) marcas.push({ x:MAP.exit.x, y:MAP.exit.y, col:'#9fe8ff', txt:'▲', prio:0 });
+  if (G.marcas) for (const mk of G.marcas) {            /* avisos del equipo */
+    const d = MARCA_TIPO[mk.k] || MARCA_TIPO[0];
+    marcas.push({ x:mk.x, y:mk.y, col:d.col, txt:d.ico, prio:2 });
+  }
   if (!marcas.length) return;
   const invDet = 1/(IN.planeX*IN.dirY - IN.dirX*IN.planeY);
   const rx0 = W*0.5, ry0 = H*0.5, radio = Math.min(W, H)*0.40;
@@ -9493,6 +9608,7 @@ window.addEventListener('keydown', (ev) => {
   const p = me(); if (!p) return;
   for (let i=0;i<5;i++) if (ev.code === KEYS['w'+(i+1)]) selectWeapon(p, i);
   if (ev.code === KEYS.mute) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
+  if (ev.code === KEYS.marcar) marcarSitio(p);          /* aviso para el equipo */
   if (ev.code === 'Escape') { if (document.pointerLockElement) document.exitPointerLock(); else openPause(); }
 });
 window.addEventListener('keyup', (ev) => { if (typing(ev)) return; IN.keys[ev.code] = false; });
@@ -9933,6 +10049,7 @@ function frame(now) {
       updateProjectiles(dt);                              /* solo la granada propia y efectos */
     }
     updateParts(dt);
+    tickMarcas(dt);
     /* Avatares remotos: se sigue su rumbo entre paquete y paquete y se gira
        por el lado corto. Antes solo se acercaban al ultimo punto conocido y
        por eso iban a tirones y siempre un paso por detras. */
