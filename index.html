@@ -761,7 +761,7 @@ const DEFAULT_KEYS = {
   sprint:'ShiftLeft', crouch:'KeyC', jump:'Space', dash:'KeyF',
   fire:'Mouse0', alt:'Mouse2', reload:'KeyR', heal:'KeyH', nade:'KeyG', ulti:'KeyQ',
   w1:'Digit1', w2:'Digit2', w3:'Digit3', w4:'Digit4', w5:'Digit5',
-  map:'Tab', mute:'KeyM', marcar:'KeyE'
+  map:'Tab', mute:'KeyM', marcar:'KeyE', hablar:'KeyZ'
 };
 const KEY_LABELS = {
   forward:'Avanzar', back:'Retroceder', left:'Desplazarse a la izquierda', right:'Desplazarse a la derecha',
@@ -772,6 +772,7 @@ const KEY_LABELS = {
   w1:'1 · Machete', w2:'2 · Glock 19', w3:'3 · Remington 870', w4:'4 · M16', w5:'5 · Frag Grenade',
   wprev:'Arma anterior', wnext:'Arma siguiente',
   marcar:'Marcar sitio (aviso para el equipo)',
+  hablar:'Avisos rápidos (rueda de frases)',
   map:'Mapa', mute:'Silenciar'
 };
 /* en la lista de ARMAS el teclado lleva un numero por arma y el mando las rota */
@@ -780,7 +781,7 @@ const KEY_SECTIONS = [
   { title:'MOVIMIENTO', keys:['forward','back','left','right','sprint','crouch','jump','dash'] },
   { title:'COMBATE',    keys:['fire','alt','nade','reload','heal','ulti'] },
   { title:'ARMAS',      keys:['w1','w2','w3','w4','w5'] },
-  { title:'INTERFAZ',   keys:['map','mute','marcar'] }
+  { title:'INTERFAZ',   keys:['map','mute','marcar','hablar'] }
 ];
 /* ---------------------------------------------------------------------
    Mandos: Chrome mapea PlayStation y Xbox al esquema "standard", asi que
@@ -796,7 +797,8 @@ const DEFAULT_PAD = {
   fire:'B7', alt:'B6', nade:'B12', reload:'B2', heal:'B3', ulti:'B13',
   jump:'B0', dash:'B1', crouch:'B10', sprint:'B11',
   wprev:'B4', wnext:'B5',                               /* L1/LB y R1/RB rotan el arma */
-  map:'B8', mute:'B16', marcar:'B15'                    /* cruceta derecha: marcar sitio */
+  map:'B8', mute:'B16', marcar:'B15',                   /* cruceta derecha: marcar sitio */
+  hablar:'B14'                                          /* cruceta izquierda: avisos rapidos */
 };
 const MAX_LOCALES = 4;
 let KEYS = Object.assign({}, DEFAULT_KEYS);
@@ -5442,6 +5444,56 @@ function explode(x, y, radius, dmg, fromId) {
 }
 
 /* ---------------------------------------------------------------------
+   AVISOS RAPIDOS
+   Una rueda de cuatro frases para hablar sin soltar el mando. Se abre con
+   su tecla, se elige con 1-4 (o L1/R1 en mando) y se manda con disparar.
+   --------------------------------------------------------------------- */
+const FRASES = [
+  { ico:'🆘', txt:'¡AYUDA AQUÍ!',    col:'#ff6b6b' },
+  { ico:'👍', txt:'¡VOY!',           col:'#8ce89b' },
+  { ico:'🔄', txt:'ME REPLIEGO',     col:'#ffd45e' },
+  { ico:'🚪', txt:'¡A LA SALIDA!',   col:'#9fe8ff' }
+];
+let rueda = { on:false, sel:0, t:0, quien:null };
+function abrirRueda(p) {
+  if (!p || p.down) return;
+  rueda.on = true; rueda.sel = 0; rueda.t = 4.0; rueda.quien = p;
+}
+function decirFrase(p, i) {
+  const f = FRASES[clamp(i|0, 0, FRASES.length-1)];
+  killFeed((p.nick || '') + ': ' + f.ico + ' ' + f.txt, f.col);
+  Snd.marca();
+  NET.send({ t:'frase', i:clamp(i|0,0,FRASES.length-1), n:p.nick || '' });
+  rueda.on = false;
+}
+function tickRueda(dt) {
+  if (!rueda.on) return;
+  rueda.t -= dt;
+  if (rueda.t <= 0 || !rueda.quien || rueda.quien.down) rueda.on = false;
+}
+function renderRueda() {
+  if (!rueda.on) return;
+  const W = view.w, H = view.v3, s = view.s;
+  const cx = W/2, cy = H*0.62, r = Math.min(W,H)*0.17;
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,7,10,0.62)';
+  ctx.beginPath(); ctx.arc(cx, cy, r*1.5, 0, TAU); ctx.fill();
+  FRASES.forEach((f, i) => {
+    const a = -Math.PI/2 + i*(TAU/FRASES.length);
+    const px = cx + Math.cos(a)*r, py = cy + Math.sin(a)*r;
+    const act = (i === rueda.sel);
+    const w = 132*s, h = 30*s;
+    ctx.fillStyle = act ? 'rgba(60,48,20,0.95)' : 'rgba(10,9,12,0.85)';
+    roundRect(ctx, px-w/2, py-h/2, w, h, 6*s, ctx.fillStyle);
+    ctx.strokeStyle = act ? f.col : 'rgba(150,130,90,0.45)';
+    ctx.lineWidth = Math.max(1.5, (act?2.6:1.4)*s);
+    roundRect(ctx, px-w/2, py-h/2, w, h, 6*s); ctx.stroke();
+    bigText((i+1) + ' ' + f.ico + ' ' + f.txt, px, py + 5*s, (13*s)|0, act ? f.col : '#c9b48a');
+  });
+  bigText('AVISO RÁPIDO · 1-4 o L1/R1 y disparar', cx, cy + r*1.75, (12*s)|0, '#9aa0a6');
+  ctx.restore();
+}
+/* ---------------------------------------------------------------------
    MARCAS DE SITIO
    Apuntas y avisas: sale un rombo flotando donde miras, una flecha en el
    borde de la pantalla y una linea en el registro. El tipo se saca de lo
@@ -5599,9 +5651,16 @@ function updateLocal(p, dt) {
   }
   updateDir(p);                                         /* IN.* pasa a ser el de este */
   if (p.pad !== undefined && p.pad !== null) {          /* atajos que en teclado van por keydown */
-    if (flanco(p, 'wnext')) rotarArma(p, 1);            /* R1 / RB */
-    if (flanco(p, 'wprev')) rotarArma(p, -1);           /* L1 / LB */
     if (flanco(p, 'marcar')) marcarSitio(p);            /* cruceta derecha */
+    if (flanco(p, 'hablar')) { if (rueda.on && rueda.quien === p) rueda.on = false; else abrirRueda(p); }
+    if (rueda.on && rueda.quien === p) {                /* con la rueda abierta manda la rueda */
+      if (flanco(p, 'wnext')) rueda.sel = (rueda.sel + 1) % FRASES.length;
+      if (flanco(p, 'wprev')) rueda.sel = (rueda.sel + FRASES.length - 1) % FRASES.length;
+      if (flanco(p, 'fire')) decirFrase(p, rueda.sel);
+    } else {
+      if (flanco(p, 'wnext')) rotarArma(p, 1);          /* R1 / RB */
+      if (flanco(p, 'wprev')) rotarArma(p, -1);         /* L1 / LB */
+    }
     if (flanco(p, 'mute')) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
     if (padPulsado(p.pad, 'B9') && !p.startHeld) openPause();   /* START */
     p.startHeld = padPulsado(p.pad, 'B9');
@@ -5764,7 +5823,8 @@ function updateLocal(p, dt) {
       p.inBurst = 1; fire(p, p.burstAlt); p.inBurst = 0;  /* el ultimo tiro no rearma */
     }
   }
-  const shooting = down('fire'), alting = down('alt');
+  const mudo = (rueda.on && rueda.quien === p);        /* con la rueda abierta no se dispara */
+  const shooting = !mudo && down('fire'), alting = !mudo && down('alt');
   if (p.weapon === 0 && alting && !p.altHeld && p.parryCd <= 0) {
     p.parry = 0.36*(1 + (p.up.parry||0)); p.parryCd = 0.85;   /* el tajo tambien para balas */
   }
@@ -6362,7 +6422,7 @@ const NET = {
     return 'Fallo de red: ' + t;
   },
   /* ---- salud del enlace: ping, silencio y reconexion ---- */
-  ping: 0, ultimo: 0, pingT: 0, cortado: false,
+  ping: 0, ultimo: 0, pingT: 0, cortado: false, entro: false,
   reint: 0, reintT: 0, codeUlt: '', nickUlt: '',
   latido(dt) {
     if (!this.online) { this.cortado = false; return; }
@@ -6382,7 +6442,7 @@ const NET = {
   reset() {                                             /* deja el peer limpio para reintentar */
     try { if (this.peer) this.peer.destroy(); } catch(e) {}
     this.peer = null; this.conns.clear(); this.online = false; this.isHost = false; this.code = '';
-    this.ping = 0; this.ultimo = 0; this.cortado = false; this.reint = 0;
+    this.ping = 0; this.ultimo = 0; this.cortado = false; this.reint = 0; this.entro = false;
   },
   host(nick, onReady, onErr, codeFijo) {
     if (!this.available) { onErr('PeerJS no disponible (sin conexión). Puedes jugar en solitario.'); return; }
@@ -6461,13 +6521,16 @@ const NET = {
         onErr('La sala ' + code + ' no responde. Puede que el anfitrión la haya cerrado.'); }, 9000);
       conn.on('open', () => {
         clearTimeout(timer);
-        this.online = true; this.reint = 0; this.marcarVivo();
+        this.online = true; this.reint = 0; this.entro = true; this.marcarVivo();
         this.conns.set('HOST', conn);
         G.isHost = false; G.hostId = 'HOST';
         onReady();
       });
       conn.on('data', (raw) => { try { onNet('HOST', JSON.parse(raw)); } catch(e){} });
-      conn.on('close', () => { this.online = false; this.conns.clear(); reconectar(); });
+      conn.on('close', () => {
+        this.online = false; this.conns.clear();
+        if (this.entro) reconectar();                   /* si nunca entramos, no hay a donde volver */
+      });
       conn.on('error', (e) => { if (this.online) { this.online = false; reconectar(); }
                                else onErr(this.motivo(e)); });
     });
@@ -6475,7 +6538,7 @@ const NET = {
   },
   /* corta del todo y vuelve al menu, sin intentar volver */
   rendirse(msg) {
-    this.reint = 99; this.close();
+    this.reint = 99; this.entro = false; this.close();
     if (msg) alert(msg);
     backToMenu();
   },
@@ -6579,6 +6642,9 @@ function worldSnapshot() {
   return msg;
 }
 function applySnapshot(m) {
+  if (!Array.isArray(m.e)) m.e = [];
+  if (!Array.isArray(m.p)) m.p = [];
+  if (!Array.isArray(m.q)) m.q = [];
   /* cuanto ha tardado en llegar esta instantanea: con eso se saca la
      velocidad de cada enemigo y se puede predecir entre paquete y paquete */
   const ahora = performance.now();
@@ -6663,6 +6729,17 @@ function applySnapshot(m) {
 /* --------------------------- entrada de red --------------------------- */
 function onNet(from, m) {
   NET.marcarVivo();
+  if (!m || typeof m.t !== 'string') return;
+  try { onNetInterno(from, m); }
+  catch (e) {
+    /* Un mensaje a medias o con basura no puede tumbar el bucle: se anota y
+       se sigue, que ya llegara la siguiente instantanea con el estado bueno. */
+    G.netFallos = (G.netFallos || 0) + 1;
+    if (G.netFallos === 1 || G.netFallos % 25 === 0)
+      addMsg('PAQUETE DE RED DESCARTADO (' + G.netFallos + ')', '#ff8a7a');
+  }
+}
+function onNetInterno(from, m) {
   switch (m.t) {
     case 'welcome': {
       G.meId = m.you; G.hostId = m.host; G.diff = m.diff; G.ff = m.ff;
@@ -6745,6 +6822,13 @@ function onNet(from, m) {
       break;
     case 'room': startRoom(m.n, m.seed); break;
     case 'world': if (!G.isHost) applySnapshot(m); break;
+    case 'frase': {
+      const f = FRASES[clamp(m.i|0, 0, FRASES.length-1)];
+      killFeed((m.n || 'ALGUIEN') + ': ' + f.ico + ' ' + f.txt, f.col);
+      Snd.marca();
+      if (G.isHost) relay(from, m);
+      break;
+    }
     case 'marca': {
       ponerMarca(m.x, m.y, m.k, m.id, m.n);
       if (G.isHost) relay(from, m);
@@ -9609,6 +9693,12 @@ window.addEventListener('keydown', (ev) => {
   for (let i=0;i<5;i++) if (ev.code === KEYS['w'+(i+1)]) selectWeapon(p, i);
   if (ev.code === KEYS.mute) { Snd.on = !Snd.on; addMsg(Snd.on?'SONIDO ON':'SONIDO OFF','#9fd0ff'); }
   if (ev.code === KEYS.marcar) marcarSitio(p);          /* aviso para el equipo */
+  if (ev.code === KEYS.hablar) { if (rueda.on) rueda.on = false; else abrirRueda(p); }
+  if (rueda.on) {                                       /* elegir frase con 1-4 */
+    const n = ['Digit1','Digit2','Digit3','Digit4'].indexOf(ev.code);
+    if (n >= 0) decirFrase(rueda.quien || p, n);
+    if (ev.code === 'Escape') rueda.on = false;
+  }
   if (ev.code === 'Escape') { if (document.pointerLockElement) document.exitPointerLock(); else openPause(); }
 });
 window.addEventListener('keyup', (ev) => { if (typing(ev)) return; IN.keys[ev.code] = false; });
@@ -10050,6 +10140,7 @@ function frame(now) {
     }
     updateParts(dt);
     tickMarcas(dt);
+    tickRueda(dt);
     /* Avatares remotos: se sigue su rumbo entre paquete y paquete y se gira
        por el lado corto. Antes solo se acercaban al ultimo punto conocido y
        por eso iban a tirones y siempre un paso por detras. */
@@ -10125,6 +10216,7 @@ function frame(now) {
       }
       renderWorld(); renderDecals(); renderExitCircle(); renderNadeArc(); renderMotes();
       renderSprites(); renderTrazas(); renderWeapon();
+      if (rueda.on && rueda.quien === jug) renderRueda();
       if (aparte) {
         ctx = dest;
         ctx.translate(view.w*0.5, view.v3*0.5);

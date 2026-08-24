@@ -63,8 +63,14 @@ los jefes.
   equipo ve un rombo flotante donde miras, una flecha en el borde de la pantalla
   y una línea en el registro. El tipo sale solo: enemigo, botín, salida o
   genérica. Cada jugador tiene una marca a la vez y duran siete segundos.
+- **Avisos rápidos:** `Z` (cruceta ← en mando) abre una rueda de cuatro frases
+  — ¡ayuda aquí!, ¡voy!, me repliego, ¡a la salida! — que se eligen con 1-4 o
+  con L1/R1 y disparar. Mientras está abierta no se dispara ni se cambia de
+  arma, y se cierra sola a los cuatro segundos.
 - **Errores en cristiano:** «no hay ninguna sala con ese código», «tu red está
   bloqueando la conexión directa»… en vez de los códigos internos de PeerJS.
+- **A prueba de paquetes rotos:** un mensaje a medias o con basura se descarta
+  y se sigue jugando; ya llegará la siguiente instantánea con el estado bueno.
 
 ## Controles (por defecto)
 
@@ -84,6 +90,7 @@ los jefes.
 | Cantimplora | H | Y / △ |
 | Furia | Q | Cruceta ↓ |
 | Marcar sitio | E | Cruceta → |
+| Avisos rápidos | Z | Cruceta ← |
 | Mapa | Tab | Back |
 | Pausa | Esc | Start |
 
